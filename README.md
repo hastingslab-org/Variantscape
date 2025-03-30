@@ -3,7 +3,7 @@
 ## Overview
 Extraction of genetic variations and associated information from biomedical literature
 
-<img width="796" alt="Variantscape_3_cancers" src="https://github.com/user-attachments/assets/2efa2769-6ab3-4f12-82ed-9a94c0ae7e63" />
+<img width="500" alt="Variantscape_3_cancers" src="https://github.com/user-attachments/assets/2efa2769-6ab3-4f12-82ed-9a94c0ae7e63" />
 
 
 
