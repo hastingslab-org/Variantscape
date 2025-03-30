@@ -3,7 +3,8 @@
 ## Overview
 Extraction of genetic variations and associated information from biomedical literature
 
-<img width="384" alt="TrendyVariants" src="https://github.com/user-attachments/assets/768ffe51-d119-4002-963f-b397bf7a82b3" />
+<img width="796" alt="Variantscape_3_cancers" src="https://github.com/user-attachments/assets/2efa2769-6ab3-4f12-82ed-9a94c0ae7e63" />
+
 
 
 ## Technologies used
