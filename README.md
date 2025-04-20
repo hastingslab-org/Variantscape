@@ -2,6 +2,7 @@
 
 ## Overview
 Variantscape is a large-scale literature mining approach that combines LLM-driven entity extraction with co-association and network-based analysis to uncover variant–treatment–cancer relationships from biomedical abstracts.
+
 <img width="500" alt="Variantscape_3_cancers" src="https://github.com/user-attachments/assets/2efa2769-6ab3-4f12-82ed-9a94c0ae7e63" />
 
 ---
@@ -14,10 +15,13 @@ Variantscape is a large-scale literature mining approach that combines LLM-drive
 - Integration of external biomedical APIs (OpenAlex, CIViC, MONDO, etc.) for enrichment  
 - Exploratory analysis of rare or under-characterized variants
 
+
+
 ---
 ## Installation & Setup
 
 All required packages and model downloads are handled directly within each Jupyter notebook.
+
 
 ## Technologies used
 - Python and Jupyter Notebook for execution
