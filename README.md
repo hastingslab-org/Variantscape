@@ -14,8 +14,8 @@ Variantscape is a large-scale literature mining approach that combines LLM-drive
 - Graph-based representation of biomedical associations  
 - Integration of external biomedical APIs (OpenAlex, CIViC, MONDO, etc.) for enrichment  
 - Exploratory analysis of rare or under-characterized variants
-
-
+#
+#
 
 ---
 ## Installation & Setup
