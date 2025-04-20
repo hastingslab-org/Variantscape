@@ -48,6 +48,7 @@ This project is structured as a modular pipeline, with Jupyter notebooks organiz
 03_gene_extraction
 04_categorization
 05_LLM_variant_extraction
+06_coassociation_and_network_analysis
     ...
 ```
 <br><br>
