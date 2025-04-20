@@ -69,7 +69,7 @@ Two dedicated evaluation modules are included to validate and assess extraction 
 - `LLM_variant_evaluation/`: Evaluates the performance of large language model–driven variant extraction. Results and methodology are described in "Wosny, M. & Hastings, J., "Large Language Models for Detection of Genetic Variants in Biomedical Literature."
 
 
-These studies provide insight into the reliability and limitations of automated extraction workflows and support the development of high-confidence networks used in downstream analyses.
+These studies provide insight into the reliability and limitations of automated extraction methods for genes and variants for downstream analyses.
 <br><br>
 
 ---
