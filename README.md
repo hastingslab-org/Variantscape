@@ -65,12 +65,13 @@ This project is structured as a modular pipeline, with Jupyter notebooks organiz
 ## Evaluation Studies
 
 Two dedicated evaluation modules are included to validate and assess extraction quality:
+- `NLP_gene_evaluation/`: Evaluates gene name extraction using traditional NLP techniques and biomedical NER models. Results are discussed in "Wosny, M. & Hastings, J., "Automated gene identification in oncology literature: A comparative evaluation of Natural Language Processing approaches."
+- `LLM_variant_evaluation/`: Evaluates the performance of large language model–driven variant extraction. Results and methodology are described in "Wosny, M. & Hastings, J., "Large Language Models for Detection of Genetic Variants in Biomedical Literature."
 
-- `LLM_variant_evaluation/`: Evaluates the performance of large language model–driven variant extraction. Results and methodology are described in the manuscript *PAPERPLACEHOLDER 1*.
-- `NLP_gene_evaluation/`: Evaluates gene name extraction using traditional NLP techniques and biomedical NER models. Results are discussed in *PAPERPLACEHOLDER 2*.
 
 These studies provide insight into the reliability and limitations of automated extraction workflows and support the development of high-confidence networks used in downstream analyses.
 <br><br>
+
 ---
 
 ## Interactive Web Tool
@@ -92,8 +93,8 @@ Access the tool here: **[HASTINGSLAB]**
 
 If you use this work, please cite the accompanying manuscripts:
 
-- *PLACEHOLDER 0: Title of variant extraction study*
-- *PLACEHOLDER 1: Title of variant extraction study*
-- *PLACEHOLDER 2: Title of gene evaluation study*
+- Wosny M., Boesch M., Peres T., Niederhauser T., Frueh M., Rothermundt C., Hastings J (2025) "Variantscape: Using large language models to build a comprehensive landscape of cancer variants" (Preprint)
+- Wosny, M. & Hastings, J. (2025) Automated gene identification in oncology literature: A comparative evaluation of Natural Language Processing approaches. Studies in Health Technology and Informatics (Preprint)
+- Wosny, M. & Hastings, J. (2025) Large Language Models for Detection of Genetic Variants in Biomedical Literature. (Preprint)
 
 ---
