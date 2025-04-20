@@ -1,8 +1,7 @@
 # Variantscape
 
 ## Overview
-Variantscape is a large-scale literature mining approach that combines LLM-driven entity extraction with co-association and network-based analysis to uncover variant–treatment–cancer relationships from biomedical abstracts.
-
+Variantscape is a large-scale literature mining approach that combines LLM-driven entity extraction with co-association and network-based analysis to uncover variant–treatment–cancer relationships from biomedical abstracts.<br><br>
 <img width="500" alt="Variantscape_3_cancers" src="https://github.com/user-attachments/assets/2efa2769-6ab3-4f12-82ed-9a94c0ae7e63" />
 
 ---
@@ -14,8 +13,7 @@ Variantscape is a large-scale literature mining approach that combines LLM-drive
 - Graph-based representation of biomedical associations  
 - Integration of external biomedical APIs (OpenAlex, CIViC, MONDO, etc.) for enrichment  
 - Exploratory analysis of rare or under-characterized variants
-#
-#
+<br><br>
 
 ---
 ## Installation & Setup
@@ -38,7 +36,7 @@ All required packages and model downloads are handled directly within each Jupyt
 
 > Note: This project uses several external APIs (OpenAlex, CIViC, MONDO, etc.) and NLP models (e.g., SciSpaCy, BioBERT).  
 > Some notebooks use LLMs via DeepInfra (e.g., Llama 3.3). To use them, a DeepInfra account, API key, and credits are needed.
-
+<br><br>
 ---
 
 ## Usage
