@@ -16,7 +16,7 @@ Variantscape is a large-scale literature mining approach that combines LLM-drive
 <br><br>
 
 ---
-## Installation & Setup
+## Installation and setup
 
 All required packages and model downloads are handled directly within each Jupyter notebook.
 <br><br>
@@ -63,7 +63,7 @@ This project is structured as a modular pipeline, with Jupyter notebooks organiz
 > All notebooks are designed to be executed sequentially for a complete analysis workflow.
 <br><br>
 ---
-## Evaluation Studies
+## Evaluation studies
 
 Two dedicated evaluation modules are included to validate and assess extraction quality:
 - `NLP_gene_evaluation/`: Evaluates gene name extraction using traditional NLP techniques and biomedical NER models. Results are discussed in "Wosny, M. & Hastings, J., "Automated gene identification in oncology literature: A comparative evaluation of Natural Language Processing approaches."
