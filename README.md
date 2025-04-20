@@ -19,7 +19,7 @@ Variantscape is a large-scale literature mining approach that combines LLM-drive
 ## Installation & Setup
 
 All required packages and model downloads are handled directly within each Jupyter notebook.
-
+<br><br>
 
 ## Technologies used
 - Python and Jupyter Notebook for execution
@@ -50,6 +50,7 @@ This project is structured as a modular pipeline, with Jupyter notebooks organiz
 05_LLM_variant_extraction
     ...
 ```
+<br><br>
 
 ### How to run
 1. Start from `01_fetching_articles` and move step-by-step through each numbered folder.
@@ -59,9 +60,8 @@ This project is structured as a modular pipeline, with Jupyter notebooks organiz
 
 > Internet access is required for live API calls (e.g., OpenAlex, CIViC, MONDO).  
 > All notebooks are designed to be executed sequentially for a complete analysis workflow.
-
+<br><br>
 ---
-
 ## Evaluation Studies
 
 Two dedicated evaluation modules are included to validate and assess extraction quality:
@@ -70,7 +70,7 @@ Two dedicated evaluation modules are included to validate and assess extraction 
 - `NLP_gene_evaluation/`: Evaluates gene name extraction using traditional NLP techniques and biomedical NER models. Results are discussed in *PAPERPLACEHOLDER 2*.
 
 These studies provide insight into the reliability and limitations of automated extraction workflows and support the development of high-confidence networks used in downstream analyses.
-
+<br><br>
 ---
 
 ## Interactive Web Tool
@@ -85,7 +85,7 @@ The tool allows users to:
 This interface supports exploratory navigation of literature-derived associations and may serve as a starting point for hypothesis generation and knowledge discovery in research settings.
 
 Access the tool here: **[HASTINGSLAB]**
-
+<br><br>
 ---
 
 ## How to cite
