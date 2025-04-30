@@ -2,7 +2,7 @@
 
 ## Overview
 Variantscape is a large-scale literature mining approach that combines LLM-driven entity extraction with co-association and network-based analysis to uncover variant–treatment–cancer relationships from biomedical abstracts.<br><br>
-<img width="500" alt="Variantscape_3_cancers" src="https://github.com/user-attachments/assets/2efa2769-6ab3-4f12-82ed-9a94c0ae7e63" />
+<img width="1670" alt="image" src="https://github.com/user-attachments/assets/470cfd4a-f501-4242-955f-4235679bc6f1" />
 
 ---
 ## Features
