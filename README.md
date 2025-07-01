@@ -98,7 +98,7 @@ Access the tool here: *https://evidencedb.hastingslab.org/variantscape*
 If you use this work, please cite the accompanying manuscripts:
 
 - Wosny M., Boesch M., Peres T., Niederhauser T., Früh M., Rothermundt C., Hastings J (2025) "Variantscape: Using Large Language Models to Build a Comprehensive Landscape of Cancer Variants for Precision Oncology." (Preprint)
-- Wosny, M. & Hastings, J. (2025) "Automated gene identification in oncology literature: A comparative evaluation of Natural Language Processing approaches." Studies in Health Technology and Informatics (Preprint)
-- Wosny, M. & Hastings, J. (2025) "Large Language Models for Detection of Genetic Variants in Biomedical Literature." Studies in Health Technology and Informatics (Preprint)
+- Wosny M, Hastings J (2025) Automated Gene Identification in Oncology Literature: A Comparative Evaluation of Natural Language Processing Approaches. In: Glob. Healthc. Transform. Era Artif. Intell. Inform. IOS Press, pp 61–65, https://ebooks.iospress.nl/doi/10.3233/SHTI250673
+- Wosny, M. & Hastings, J. (2025) "Large Language Models for Detection of Genetic Variants in Biomedical Literature." Studies in Health Technology and Informatics (Preprint, tp be published in August 2025)
 
 ---
