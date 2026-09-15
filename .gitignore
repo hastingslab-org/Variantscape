@@ -1,1 +1,8 @@
 .DS_Store
+.env
+*.csv
+*.gml
+*.txt
+*.png
+final_figures/
+results_openalex/
