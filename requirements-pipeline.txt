@@ -1,0 +1,25 @@
+# Dependencies of variantscape_pipeline (python -m variantscape_pipeline)
+pandas>=2.0
+numpy
+networkx>=3.0
+requests
+python-dotenv
+langdetect
+clean-text
+unidecode
+rapidfuzz
+openai>=1.0
+plotly
+
+# Cancer NER (SciSpaCy models must match the installed spaCy/scispacy version)
+scispacy>=0.5.4
+click
+https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/releases/v0.5.4/en_ner_bc5cdr_md-0.5.4.tar.gz
+https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/releases/v0.5.4/en_ner_bionlp13cg_md-0.5.4.tar.gz
+
+# BioBERT gene filter (VARIANTSCAPE_GENE_FILTER=biobert, the default)
+torch
+transformers
+
+# Tests
+pytest
