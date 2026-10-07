@@ -6,3 +6,6 @@
 *.png
 final_figures/
 results_openalex/
+!requirements*.txt
+pipeline_data/
+__pycache__/
