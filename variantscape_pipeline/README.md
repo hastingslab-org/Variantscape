@@ -4,13 +4,13 @@
 into one incremental command that can run unattended (for example monthly) and
 produces the files EvidenceDb reads:
 
-| File | Used by EvidenceDb for |
-|---|---|
-| `network_graph_weighted.gml` | variant / cancer / treatment co-occurrence graph, weighted by study design |
-| `final_variant_treatment_consensus.csv` | Sensitive / Resistant / … label per variant–treatment pair |
-| `metadata_mapping_transposed.csv` | entity → category (`Variant`, `Cancer`, `Treatment`) for autosuggest |
-| `curated_associations.csv` | expert-curated CIViC associations (disease-specific), listed first in EvidenceDb |
-| `verified_associations.csv` | literature associations verified against the abstracts (variant, cancer, treatment, relation, papers, example quote) |
+| File                                      | Used by EvidenceDb for                                                                                               |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `network_graph_weighted.gml`            | variant / cancer / treatment co-occurrence graph, weighted by study design                                           |
+| `final_variant_treatment_consensus.csv` | Sensitive / Resistant / … label per variant–treatment pair                                                         |
+| `metadata_mapping_transposed.csv`       | entity → category (`Variant`, `Cancer`, `Treatment`) for autosuggest                                          |
+| `curated_associations.csv`              | expert-curated CIViC associations (disease-specific), listed first in EvidenceDb                                     |
+| `verified_associations.csv`             | literature associations verified against the abstracts (variant, cancer, treatment, relation, papers, example quote) |
 
 ## Setup
 
@@ -71,11 +71,11 @@ cuts a month short, the next incremental run fetches that month again.
 The gene set decides which papers are analysed: a paper must mention one of
 its genes. Choose it with `--gene-set` or `VARIANTSCAPE_GENE_SET`.
 
-| Value | Genes | Variants in the graph |
-|---|---|---|
+| Value                  | Genes                                                                                         | Variants in the graph    |
+| ---------------------- | --------------------------------------------------------------------------------------------- | ------------------------ |
 | `oncology` (default) | all oncology-relevant genes: the OncoKB Cancer Gene List merged with all CIViC genes (~1,560) | any gene the LLM reports |
-| `civic` | CIViC genes (~750), the notebooks' gene list | only CIViC genes |
-| path to a panel file | e.g. the Oncomine panel: one symbol per line, or the first CSV column | only panel genes |
+| `civic`              | CIViC genes (~750), the notebooks' gene list                                                  | only CIViC genes         |
+| path to a panel file   | e.g. the Oncomine panel: one symbol per line, or the first CSV column                         | only panel genes         |
 
 ```bash
 python variantscape_pipeline/pipeline.py build --gene-set path/to/oncomine_ngs_panel.csv
@@ -113,17 +113,17 @@ retried on the next run. Reference data (CIViC genes, therapies, diseases and
 variants; the OncoKB cancer gene list; MONDO synonyms; the Disease Ontology bulk `doid.json`) is snapshotted
 under `pipeline_data/reference/<date>/`.
 
-| Stage | Notebook | What it does |
-|---|---|---|
-| `fetch` | 01.1 | OpenAlex works for the search term in the date window |
-| `clean` | 02.1 | duplicates, language, artifacts, non-research, length filters; text normalization |
-| `genes` | 03.1 / 03.0 | BioBERT gene NER (or exact symbol matching) against the oncology gene set; gate for later stages |
-| `cancers` | 04.1 | SciSpaCy cancer terms (raw terms stored) |
-| `treatments` | 04.2 | CIViC therapy names/aliases string matching |
-| `variants` | 05.1 | Llama-3.3-70B, prompt 3, for papers with gene + cancer + treatment |
-| `study_design` | 04.3 | LLM study-design label, for papers that also have a variant |
-| `verify` | replaces 06.02.5 | LLM checks each mined association against the abstract (see below) |
-| `build` | 05.2, 06.01, 06.02, 06.04 | normalization, consensus, weighted graph, curated CIViC associations, artifacts |
+| Stage            | Notebook                  | What it does                                                                                     |
+| ---------------- | ------------------------- | ------------------------------------------------------------------------------------------------ |
+| `fetch`        | 01.1                      | OpenAlex works for the search term in the date window                                            |
+| `clean`        | 02.1                      | duplicates, language, artifacts, non-research, length filters; text normalization                |
+| `genes`        | 03.1 / 03.0               | BioBERT gene NER (or exact symbol matching) against the oncology gene set; gate for later stages |
+| `cancers`      | 04.1                      | SciSpaCy cancer terms (raw terms stored)                                                         |
+| `treatments`   | 04.2                      | CIViC therapy names/aliases string matching                                                      |
+| `variants`     | 05.1                      | Llama-3.3-70B, prompt 3, for papers with gene + cancer + treatment                               |
+| `study_design` | 04.3                      | LLM study-design label, for papers that also have a variant                                      |
+| `verify`       | replaces 06.02.5          | LLM checks each mined association against the abstract (see below)                               |
+| `build`        | 05.2, 06.01, 06.02, 06.04 | normalization, consensus, weighted graph, curated CIViC associations, artifacts                  |
 
 Cancer mapping and harmonization, variant normalization, consensus and the graph
 are recomputed from stored raw results on every build, using the current
@@ -147,11 +147,11 @@ Variant nodes are named `<variant>_<GENE>`. Besides specific variants
 `exon19del_EGFR`), the graph has alteration-class nodes for clinically
 important alterations that are not a single change:
 
-| Class | Node | Recognized from (literature and CIViC) |
-|---|---|---|
-| fusion | `fusion_ALK` | "EML4-ALK fusion", "ALK rearrangement", "BCR::ABL1", gene "BCR-ABL" |
-| amplification | `amplification_ERBB2` | "amplification", "HER2 amplified", "copy number gain" |
-| ITD | `itd_FLT3` | "ITD", "FLT3-ITD" |
+| Class         | Node                                           | Recognized from (literature and CIViC)                                 |
+| ------------- | ---------------------------------------------- | ---------------------------------------------------------------------- |
+| fusion        | `fusion_ALK`                                 | "EML4-ALK fusion", "ALK rearrangement", "BCR::ABL1", gene "BCR-ABL"    |
+| amplification | `amplification_ERBB2`                        | "amplification", "HER2 amplified", "copy number gain"                  |
+| ITD           | `itd_FLT3`                                   | "ITD", "FLT3-ITD"                                                      |
 | hotspot codon | `v600_BRAF`, `g12_KRAS`, `r132_IDH1`, … | a hotspot codon without the exact change ("V600", "V600X", "codon 12") |
 
 - **Fusions** are named after the driver partner: a known driver kinase or
@@ -199,11 +199,11 @@ candidate association against the abstract:
 
 Resulting tiers in the graph:
 
-| Tier | Edge attribute / `sources` | In EvidenceDb |
-|---|---|---|
-| curated | `curated_*`, `civic` | listed first, CIViC badge |
-| verified literature | `weight` (study-weighted papers verifying it), `verified_papers`, `literature` | listed next, ranked by weight |
-| co-occurrence only | `cooccurrence_weight`, `cooccurrence` | hidden unless "show unverified" is ticked; greyed out |
+| Tier                | Edge attribute /`sources`                                                          | In EvidenceDb                                         |
+| ------------------- | ------------------------------------------------------------------------------------ | ----------------------------------------------------- |
+| curated             | `curated_*`, `civic`                                                             | listed first, CIViC badge                             |
+| verified literature | `weight` (study-weighted papers verifying it), `verified_papers`, `literature` | listed next, ranked by weight                         |
+| co-occurrence only  | `cooccurrence_weight`, `cooccurrence`                                            | hidden unless "show unverified" is ticked; greyed out |
 
 A verified triple also counts as verified support for its variant–cancer,
 variant–treatment and cancer–treatment edges. Edges between entities of the

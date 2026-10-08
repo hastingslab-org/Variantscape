@@ -254,6 +254,11 @@ def alteration_class(variant: str, gene: str) -> tuple[str, str] | None:
                  and not re.search(r"\d", remainder)          # no specific change such as T315I
                  and not compact.endswith(("amplification", "amplified", "itd")))
     if _FUSION_WORDS_RE.search(raw_variant) or "::" in raw_gene or gene_pair:
+        # CIViC writes "fusion with any/unknown partner" as v::ALK or FGFR2::?
+        if "::" in raw_gene:
+            known = [p.strip() for p in raw_gene.split("::") if p.strip() not in {"v", "V", "?", ""}]
+            if len(known) == 1:
+                return ("fusion", FUSION_PARTNER_ALIASES.get(known[0].upper(), clean_gene(known[0])))
         partners = fusion_partners(raw_variant, raw_gene)
         stated = None if re.search(r"::|-|/", raw_gene) else clean_gene(raw_gene)
         if partners:
