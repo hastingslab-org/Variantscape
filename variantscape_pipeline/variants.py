@@ -12,14 +12,15 @@ import re
 from collections import defaultdict
 from typing import Iterable, Sequence
 
-PROMPT_ID = "variant_prompt4"
+PROMPT_ID = "variant_prompt5"
 
 
 def build_prompt(title: str, abstract: str) -> str:
     """Prompt #3 of 05.1 (best performing in the LLM evaluation), extended with
-    alteration classes: fusions, amplifications, ITD and codon-level hotspots.
+    alteration classes (fusions, amplifications, ITD, codon-level hotspots; prompt 4)
+    and reminders not to return the examples or gene-level mentions (prompt 5).
 
-    Note: the published evaluation used prompt #3; this extension is not yet evaluated.
+    Note: the published evaluation used prompt #3; see evaluations/variant_extraction_evaluation.ipynb.
     """
     return (
         f"Extract only specific genetic variants from the text. Return strictly:\n"
@@ -32,7 +33,11 @@ def build_prompt(title: str, abstract: str) -> str:
         f"- **Internal tandem duplications** (e.g., FLT3-ITD): 'Variant: ITD, Gene: <gene>'\n"
         f"- **Hotspot codons** reported without the exact change (e.g., BRAF V600, KRAS G12): "
         f"'Variant: <codon>, Gene: <gene>'\n"
-        f"- Ignore vague terms (e.g., 'mutation found', 'expression', 'loss').\n\n"
+        f"- Ignore vague terms (e.g., 'mutation found', 'expression', 'loss').\n"
+        f"- Do not report a gene without a specific alteration (e.g., 'BRCA2 mutation', 'PTEN loss', "
+        f"'ATM alterations' are not variants).\n"
+        f"- The examples above only illustrate the format. Report only variants that are explicitly "
+        f"mentioned in the title or abstract below, never the examples themselves.\n\n"
         f"### Format:\n"
         f"- Variant: 'Variant: <mutation>, Gene: <gene>' per line\n"
         f"- If none, return: 'No variant'\n"
@@ -48,6 +53,11 @@ _PAIR_RE = re.compile(r"Variant:\s*([^,\n]+?)\s*,\s*Gene:\s*([A-Za-z0-9][A-Za-z0
 
 
 def parse_variant_gene_pairs(response: str | None) -> list[tuple[str, str]]:
+    return [(v, g) for v, g, _ in parse_variant_gene_items(response)]
+
+
+def parse_variant_gene_items(response: str | None) -> list[tuple[str, str, str]]:
+    """(variant, gene, variant as written) for each answer line; slash lists are expanded."""
     if not isinstance(response, str):
         return []
     pairs = []
@@ -60,8 +70,30 @@ def parse_variant_gene_pairs(response: str | None) -> list[tuple[str, str]]:
         if m:
             outer = re.sub(r"^[cpg]\.$", "", m.group(1).strip(), flags=re.IGNORECASE)
             variant = m.group(1).strip() if len(re.sub(r"\W", "", outer)) >= 2 else m.group(1) + m.group(2)
-        pairs.append((variant, gene.strip()))
+        pairs.extend((v, gene.strip(), variant) for v in split_variant_list(variant))
     return pairs
+
+
+def split_variant_list(variant: str) -> list[str]:
+    """Expand slash-separated variant lists written as one item.
+
+    T878A/S -> T878A, T878S; S681A/S685A -> S681A, S685A; G12/13 -> G12, G13.
+    Other text (e.g. "c.1799T>A/p.V600E") is split into its parts.
+    """
+    parts = [p.strip() for p in variant.split("/")]
+    if len(parts) < 2 or not re.search(r"\d", parts[0]) or not all(parts):
+        return [variant]
+    first = parts[0]
+    out = [first]
+    m = re.match(r"^(.*?)([A-Za-z]{1,3})?(\d+)([A-Za-z*]{0,3})$", first)
+    for part in parts[1:]:
+        if m and re.fullmatch(r"[A-Za-z*]", part) and m.group(4):           # T878A/S
+            out.append(first[: -len(m.group(4))] + part)
+        elif m and re.fullmatch(r"\d+[A-Za-z*]?", part):                    # G12/13, S807/811
+            out.append(f"{m.group(1)}{m.group(2) or ''}{part}")
+        else:
+            out.append(part)
+    return out
 
 
 # --------------------------------------------------------------------------- #
@@ -137,6 +169,22 @@ MANUAL_REMOVALS = {
     "cher3", "cher4", "cher", "chk2", "cpten", "cdlkb", "cher1", "cher5",
 }
 _PATTERN_EXCEPTIONS = {"v3", "v7"}
+
+# What a specific variant (after cleaning) can look like: protein change (v600e, e746a750del,
+# k574sfs*32, *10del), cDNA/genomic change (1799t>a, 5266dupc, 2235_2249del), rsID, exon or
+# intron-level event, splice variant name (v7). Rejects fragments such as "2cl", "class1",
+# "serine308" or "pc/".
+_VARIANT_NOTATION_RE = re.compile(
+    r"^(?:"
+    r"rs\d+"
+    r"|exon\d+\w*"
+    r"|ivs\d+.*"
+    r"|[a-z*]\d+[a-z*>].*"               # protein change with an alteration
+    r"|[a-z*]\d+$"                       # e.g. v7 (splice variants; position-only removed earlier)
+    r"|\d+(?:[+-]\d+)?(?:_\d+(?:[+-]\d+)?)?(?:[acgtu]>[acgtu]|del|dup|ins|inv|delins).*"
+    r"|[a-z*]\d+_[a-z*]?\d+.*"
+    r")$"
+)
 
 _ALIASES_BY_GENE: dict[str, list[str]] = defaultdict(list)
 for _alias, _canonical in GENE_ALIAS_MAP.items():
@@ -358,7 +406,48 @@ def clean_pair(variant: str, gene: str) -> tuple[str, str] | None:
         return None
     if v not in _PATTERN_EXCEPTIONS and (v in MANUAL_REMOVALS or any(p.match(v) for p in _REMOVE_PATTERNS)):
         return None
+    # The gene with a prefix, e.g. gBRCA2 (germline) / sBRCA2 (somatic), is not a variant
+    if v.endswith(g) and len(v) - len(g) <= 2:
+        return None
+    if not _VARIANT_NOTATION_RE.match(v):
+        return None
     return v, gene
+
+
+# --------------------------------------------------------------------------- #
+# Grounding: is an extracted variant actually in the title/abstract?
+# --------------------------------------------------------------------------- #
+_FUSION_TEXT_RE = re.compile(r"fusion|rearrang|translocat|chimer|::", re.IGNORECASE)
+_AMPLIFICATION_TEXT_RE = re.compile(r"amplif|copy[- ]number|\bcna\b|\bgain", re.IGNORECASE)
+_ITD_TEXT_RE = re.compile(r"\bitds?\b|tandem duplication", re.IGNORECASE)
+
+
+def _compact(text: str) -> str:
+    """Lower-case text without separators, with 3-letter amino acids converted (Val600Glu -> v600e)."""
+    return re.sub(r"[\s\-_.()'\"`,;:/\[\]]", "", _normalize_amino_acids(text).lower())
+
+
+class GroundingText:
+    """Checks extracted variants against a paper's title and abstract."""
+
+    def __init__(self, text: str):
+        self.text = text or ""
+        self.compact = _compact(self.text)
+
+    def _gene_named(self, gene: str) -> bool:
+        names = {gene} | {alias for alias, canonical in GENE_ALIAS_MAP.items() if canonical == gene}
+        return any(re.search(rf"\b{re.escape(n)}", self.text, re.IGNORECASE) for n in names if len(n) >= 2)
+
+    def supports(self, raw_variant: str, variant: str, gene: str) -> bool:
+        if variant == "fusion":
+            return self._gene_named(gene) and bool(_FUSION_TEXT_RE.search(self.text))
+        if variant == "amplification":
+            return self._gene_named(gene) and bool(_AMPLIFICATION_TEXT_RE.search(self.text))
+        if variant == "itd":
+            return bool(_ITD_TEXT_RE.search(self.text))
+        # Specific variants and hotspot codons: the normalized or the raw form occurs in the text
+        raw = re.sub(r"^[cpg]\.", "", _compact(raw_variant))
+        return variant in self.compact or (len(raw) >= 2 and raw in self.compact)
 
 
 # --------------------------------------------------------------------------- #
@@ -405,6 +494,7 @@ class VariantNormalizer:
         self.alias_map = canonical
         # Fusion partners seen per fusion node, e.g. fusion_ALK -> {"EML4::ALK", "KIF5B::ALK"}
         self.fusion_partners: dict[str, set[str]] = defaultdict(set)
+        self.ungrounded = 0   # extracted variants dropped because they are not in the text
 
     def record_fusion(self, node: str, variant: str, gene: str) -> None:
         partners = fusion_partners(variant, gene)
@@ -425,21 +515,33 @@ class VariantNormalizer:
         variant, gene = node.rsplit("_", 1)
         return self.node_id(variant, gene)
 
-    def nodes_from_response(self, response: str | None) -> set[str]:
+    def nodes_from_response(self, response: str | None, text: str | None = None) -> set[str]:
+        """Variant nodes in an LLM response.
+
+        With ``text`` (title + abstract), variants that do not occur in the text are
+        dropped (grounding check), e.g. the prompt's own examples repeated by the model.
+        """
         nodes = set()
-        for variant, gene in parse_variant_gene_pairs(response):
+        grounding = GroundingText(text) if text is not None else None
+        for variant, gene, written in parse_variant_gene_items(response):
             cleaned = clean_pair(variant, gene)
-            if cleaned:
-                node = self.node_id(*cleaned)
-                nodes.add(node)
-                if cleaned[0] == "fusion":
-                    self.record_fusion(node, variant, gene)
+            if not cleaned:
+                continue
+            if grounding is not None and not (grounding.supports(variant, *cleaned)
+                                              or grounding.supports(written, *cleaned)):
+                self.ungrounded += 1
+                continue
+            node = self.node_id(*cleaned)
+            nodes.add(node)
+            if cleaned[0] == "fusion":
+                self.record_fusion(node, variant, gene)
         return nodes
 
-    def nodes_from_responses(self, responses: Iterable[tuple[str, str]]) -> dict[str, set[str]]:
+    def nodes_from_responses(self, responses: Iterable[tuple[str, str]],
+                             texts: dict[str, str] | None = None) -> dict[str, set[str]]:
         out = {}
         for paper_id, response in responses:
-            nodes = self.nodes_from_response(response)
+            nodes = self.nodes_from_response(response, texts.get(paper_id, "") if texts is not None else None)
             if nodes:
                 out[paper_id] = nodes
         return out

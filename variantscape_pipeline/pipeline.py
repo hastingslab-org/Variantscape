@@ -321,6 +321,7 @@ class Pipeline:
             "edges": G.number_of_edges(),
             "consensus_pairs": len(consensus),
             "consensus_labels": consensus["Resolved_Prediction"].value_counts().to_dict(),
+            "variants_dropped_not_in_text": self.normalizer.ungrounded,
             "verification": verification_stats(verdicts, entities),
             "curated": {"records": len(records), **curated_stats, **coverage},
             "reference_snapshot": str(self.reference.source_dir),

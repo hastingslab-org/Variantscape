@@ -76,7 +76,11 @@ def compute_pipeline_state(store: Store, mapper: CancerMapper, normalizer: Varia
         if term_map[term]:
             state.cancers.setdefault(pid, set()).update(term_map[term])
 
-    state.variants = normalizer.nodes_from_responses(store.conn.execute("SELECT paper_id, response FROM variant_llm"))
+    # Grounding check: only variants that occur in the paper's title/abstract count
+    responses = store.conn.execute("SELECT paper_id, response FROM variant_llm").fetchall()
+    texts = store.texts([pid for pid, _ in responses])
+    text_by_id = dict(zip(texts["paper_id"], texts["title"].fillna("") + " " + texts["abstract"].fillna("")))
+    state.variants = normalizer.nodes_from_responses(responses, text_by_id)
     if gene_set is not None and gene_set.restrict_variants:
         restricted = {pid: {v for v in nodes if gene_set.contains(v.rsplit("_", 1)[-1])}
                       for pid, nodes in state.variants.items()}
