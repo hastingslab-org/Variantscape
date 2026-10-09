@@ -36,7 +36,7 @@ from .study_design import build_prompt as design_prompt
 from .study_design import parse_label
 from .treatments import TreatmentMatcher
 from .variants import PROMPT_ID as VARIANT_PROMPT_ID
-from .variants import VariantNormalizer
+from .variants import VariantNormalizer, gene_alias_table
 from .variants import build_prompt as variant_prompt
 from .verification import PROMPT_ID as VERIFY_PROMPT_ID
 from .verification import Candidate, candidates_from_json, candidates_to_json, make_candidates, max_tokens_for
@@ -333,7 +333,8 @@ class Pipeline:
             self.cancer_mapper.synonym_table(), self.summary,
             tables={"curated_associations.csv": records_frame(records, literature_graph, consensus),
                     "curated_coverage.csv": coverage_table,
-                    "verified_associations.csv": verified_table},
+                    "verified_associations.csv": verified_table,
+                    "gene_aliases.csv": self.gene_alias_frame(G)},
         )
         if html:
             from .network_html import write_network_html
@@ -354,6 +355,14 @@ class Pipeline:
             written = build_mod.deploy(out_dir, deploy_to, include_html=html)
             self.summary["deployed"] = [str(p) for p in written]
             log.info("Deployed to %s", deploy_to)
+
+    def gene_alias_frame(self, G):
+        """Aliases of the graph's variant genes, for searching EvidenceDb by alias (MEK1 -> MAP2K1)."""
+        import pandas as pd
+
+        self.normalizer  # configures the HGNC symbols
+        genes = {n.rpartition("_")[2] for n, d in G.nodes(data=True) if d.get("category") == "Variant"}
+        return pd.DataFrame(gene_alias_table(genes), columns=["alias", "symbol"])
 
 
 def verification_stats(verdicts: dict, entities: dict) -> dict:

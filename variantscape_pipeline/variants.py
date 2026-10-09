@@ -250,9 +250,9 @@ def gene_alias_table(symbols) -> list[tuple[str, str]]:
     searches by an alias (MEK1, HER2, H3F3A) find the normalized gene. Aliases that are
     themselves one of the symbols are left out."""
     symbols = {s.upper() for s in symbols}
-    pairs = {(a, s) for a, s in GENE_ALIAS_MAP.items()}
-    pairs |= set(_HGNC_ALIASES.items()) | set(_HGNC_COMPACT.items())
-    return sorted((a, s) for a, s in pairs if s in symbols and a not in symbols)
+    # Same precedence as clean_gene: the curated map wins over HGNC (ERBB -> ERBB2, not EGFR)
+    aliases = {**_HGNC_COMPACT, **_HGNC_ALIASES, **GENE_ALIAS_MAP}
+    return sorted((a, s) for a, s in aliases.items() if s in symbols and a not in symbols)
 
 
 def clean_variant_string(variant: str) -> str:

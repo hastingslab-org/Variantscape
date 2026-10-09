@@ -27,7 +27,7 @@ CATEGORIES = ("Variant", "Cancer", "Treatment")
 SOURCE_LITERATURE = "literature"      # verified in the abstract
 SOURCE_COOCCURRENCE = "cooccurrence"  # only co-mentioned
 ARTIFACTS = ("network_graph_weighted.gml", "final_variant_treatment_consensus.csv", "metadata_mapping_transposed.csv",
-             "curated_associations.csv", "verified_associations.csv")
+             "curated_associations.csv", "verified_associations.csv", "gene_aliases.csv")
 
 
 @dataclass
