@@ -183,6 +183,7 @@ _VARIANT_NOTATION_RE = re.compile(
     r"|[a-z*]\d+$"                       # e.g. v7 (splice variants; position-only removed earlier)
     r"|\d+(?:[+-]\d+)?(?:_\d+(?:[+-]\d+)?)?(?:[acgtu]>[acgtu]|del|dup|ins|inv|delins).*"
     r"|[a-z*]\d+_[a-z*]?\d+.*"
+    r"|[a-z][a-z0-9]*\*\d+[a-z]?"      # star alleles, e.g. ugt1a1*28, cyp2d6*4
     r")$"
 )
 
@@ -203,9 +204,55 @@ def _map_exon(variant: str) -> str:
     return variant
 
 
+# HGNC gene symbols, set by configure_gene_symbols() (VariantNormalizer does this from the
+# reference snapshot). Empty = no HGNC normalization (only GENE_ALIAS_MAP).
+_HGNC_APPROVED: set[str] = set()
+_HGNC_ALIASES: dict[str, str] = {}
+_HGNC_COMPACT: dict[str, str] = {}   # approved symbol without hyphens -> symbol, e.g. H33A -> H3-3A
+
+
+def configure_gene_symbols(hgnc: dict | None) -> None:
+    """Use HGNC approved symbols, aliases and previous symbols to normalize gene names
+    (MEK1 -> MAP2K1, H3F3A -> H3-3A, PD-L1 -> CD274). ``None`` switches it off."""
+    global _HGNC_APPROVED, _HGNC_ALIASES, _HGNC_COMPACT
+    hgnc = hgnc or {}
+    _HGNC_APPROVED = {s.upper() for s in hgnc.get("approved", [])}
+    _HGNC_ALIASES = {a.upper(): s.upper() for a, s in (hgnc.get("aliases") or {}).items()}
+    compact: dict[str, set[str]] = defaultdict(set)
+    for symbol in _HGNC_APPROVED:
+        if "-" in symbol:
+            compact[symbol.replace("-", "")].add(symbol)
+    _HGNC_COMPACT = {k: next(iter(v)) for k, v in compact.items() if len(v) == 1 and k not in _HGNC_APPROVED}
+
+
 def clean_gene(gene: str) -> str:
-    gene = re.sub(r"[-_\s]", "", gene.strip().upper())
-    return GENE_ALIAS_MAP.get(gene, gene)
+    """Normalize a gene name to an (upper-case) gene symbol.
+
+    Order: the curated GENE_ALIAS_MAP (LLM quirks such as ER -> ESR1), an approved HGNC
+    symbol as written (keeps hyphenated symbols such as H3-3A), then unambiguous HGNC
+    aliases / previous symbols.
+    """
+    written = re.sub(r"\s+", "", gene.strip().upper())
+    compact = re.sub(r"[-_]", "", written)
+    if compact in GENE_ALIAS_MAP:
+        return GENE_ALIAS_MAP[compact]
+    for key in (written, compact):
+        if key in _HGNC_APPROVED:
+            return key
+    for key in (written, compact):
+        if key in _HGNC_ALIASES:
+            return _HGNC_ALIASES[key]
+    return _HGNC_COMPACT.get(compact, compact)
+
+
+def gene_alias_table(symbols) -> list[tuple[str, str]]:
+    """(alias, symbol) pairs that ``clean_gene`` maps onto the given gene symbols, so that
+    searches by an alias (MEK1, HER2, H3F3A) find the normalized gene. Aliases that are
+    themselves one of the symbols are left out."""
+    symbols = {s.upper() for s in symbols}
+    pairs = {(a, s) for a, s in GENE_ALIAS_MAP.items()}
+    pairs |= set(_HGNC_ALIASES.items()) | set(_HGNC_COMPACT.items())
+    return sorted((a, s) for a, s in pairs if s in symbols and a not in symbols)
 
 
 def clean_variant_string(variant: str) -> str:
@@ -411,6 +458,9 @@ def clean_pair(variant: str, gene: str) -> tuple[str, str] | None:
         return None
     if not _VARIANT_NOTATION_RE.match(v):
         return None
+    # Star alleles are named with their gene (*28 + UGT1A1 -> ugt1a1*28), as in CIViC
+    if re.fullmatch(r"\*\d+[a-z]?", v):
+        v = f"{g}{v}"
     return v, gene
 
 
@@ -462,7 +512,8 @@ class VariantNormalizer:
     the same cleaning as the LLM output, and aliases only merge within a gene.
     """
 
-    def __init__(self, civic_variants: Sequence[dict]):
+    def __init__(self, civic_variants: Sequence[dict], hgnc: dict | None = None):
+        configure_gene_symbols(hgnc)
         canonical: dict[tuple[str, str], str] = {}
         canonical_names: set[tuple[str, str]] = set()
         prepared = []

@@ -21,6 +21,8 @@ import requests
 log = logging.getLogger(__name__)
 
 CIVIC_GRAPHQL_URL = "https://civicdb.org/api/graphql"
+# HGNC complete set: approved gene symbols with their aliases and previous symbols
+HGNC_URL = "https://storage.googleapis.com/public-download-files/hgnc/tsv/tsv/hgnc_complete_set.txt"
 # OncoKB Cancer Gene List (public, no token): ~1,200 genes aggregated from OncoKB,
 # MSK-IMPACT, FoundationOne, Vogelstein et al. and the Sanger Cancer Gene Census
 ONCOKB_CANCER_GENES_URL = "https://www.oncokb.org/api/v1/utils/cancerGeneList"
@@ -182,6 +184,7 @@ class Reference:
     oncokb_genes: list[str] = field(default_factory=list)
     evidence: list[dict] = field(default_factory=list)     # accepted CIViC evidence items
     assertions: list[dict] = field(default_factory=list)   # accepted CIViC assertions
+    hgnc: dict = field(default_factory=dict)                # {"approved": [...], "aliases": {alias: symbol}}
     source_dir: Path | None = field(default=None)
 
     # ------------------------------------------------------------------ #
@@ -212,12 +215,13 @@ class Reference:
             "oncokb_genes": _fetch_oncokb_genes,
             "civic_evidence": lambda: _paginate(EVIDENCE_QUERY, "evidenceItems"),
             "civic_assertions": lambda: _paginate(ASSERTIONS_QUERY, "assertions"),
+            "hgnc": _fetch_hgnc,
         }
         for name, fetch in backfill.items():
             if not (snapshot / f"{name}.json").exists():
                 (snapshot / f"{name}.json").write_text(json.dumps(fetch(), indent=1))
         return cls(rd("genes"), rd("therapies"), rd("diseases"), rd("variants"), rd("oncokb_genes"),
-                   rd("civic_evidence"), rd("civic_assertions"), snapshot)
+                   rd("civic_evidence"), rd("civic_assertions"), rd("hgnc"), snapshot)
 
     @classmethod
     def _fetch(cls, snapshot: Path, cache_dir: Path) -> "Reference":
@@ -273,19 +277,45 @@ class Reference:
             for v in _paginate(VARIANTS_QUERY, "variants")
         ]
 
+        log.info("Downloading HGNC gene symbols ...")
+        hgnc = _fetch_hgnc()
+
         log.info("Fetching CIViC evidence items and assertions ...")
         evidence = _paginate(EVIDENCE_QUERY, "evidenceItems")
         assertions = _paginate(ASSERTIONS_QUERY, "assertions")
 
         for name, obj in (("genes", genes), ("oncokb_genes", oncokb_genes), ("therapies", therapies),
                           ("diseases", disease_rows), ("variants", variants),
-                          ("civic_evidence", evidence), ("civic_assertions", assertions)):
+                          ("civic_evidence", evidence), ("civic_assertions", assertions), ("hgnc", hgnc)):
             (snapshot / f"{name}.json").write_text(json.dumps(obj, indent=1))
         (snapshot / "complete").write_text("ok")
         log.info("Reference snapshot written to %s (%d CIViC genes, %d OncoKB genes, %d therapies, %d diseases, "
                  "%d variants, %d evidence items, %d assertions)", snapshot, len(genes), len(oncokb_genes),
                  len(therapies), len(disease_rows), len(variants), len(evidence), len(assertions))
-        return cls(genes, therapies, disease_rows, variants, oncokb_genes, evidence, assertions, snapshot)
+        return cls(genes, therapies, disease_rows, variants, oncokb_genes, evidence, assertions, hgnc, snapshot)
+
+
+def _fetch_hgnc() -> dict:
+    """Approved HGNC symbols and an alias/previous-symbol -> approved symbol map.
+
+    Aliases that point to several genes (e.g. ER -> ESR1/EREG) are left out, as are
+    aliases that are themselves approved symbols (e.g. AR).
+    """
+    import csv
+    import io
+
+    resp = requests.get(HGNC_URL, timeout=300)
+    resp.raise_for_status()
+    rows = [r for r in csv.DictReader(io.StringIO(resp.text), delimiter="\t") if r.get("status") == "Approved"]
+    approved = {r["symbol"].upper(): r["symbol"] for r in rows}
+    targets: dict[str, set[str]] = {}
+    for r in rows:
+        for column in ("alias_symbol", "prev_symbol"):
+            for alias in filter(None, (r.get(column) or "").strip('"').split("|")):
+                targets.setdefault(alias.strip().upper(), set()).add(r["symbol"])
+    aliases = {a: next(iter(s)) for a, s in targets.items() if len(s) == 1 and a not in approved}
+    log.info("HGNC: %d approved symbols, %d unambiguous aliases", len(approved), len(aliases))
+    return {"approved": sorted(approved.values()), "aliases": aliases}
 
 
 def _fetch_oncokb_genes() -> list[str]:

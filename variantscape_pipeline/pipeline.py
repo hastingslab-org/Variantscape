@@ -72,7 +72,7 @@ class Pipeline:
 
     @cached_property
     def normalizer(self) -> VariantNormalizer:
-        return VariantNormalizer(self.reference.variants)
+        return VariantNormalizer(self.reference.variants, hgnc=self.reference.hgnc)
 
     @cached_property
     def gene_set(self) -> GeneSet:
