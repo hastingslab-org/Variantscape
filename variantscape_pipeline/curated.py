@@ -148,6 +148,9 @@ def build_curated_records(reference: Reference, mapper: CancerMapper, normalizer
             skipped["generic_disease"] += 1
             continue
         cancer_node = mapper.harmonize(normalized)
+        if cancer_node is None:   # no OncoTree type (site-less, too generic, unmapped)
+            skipped["unmapped_disease"] += 1
+            continue
 
         therapies = [t["name"] for t in item.get("therapies") or [] if t.get("name")]
         if evidence_type == "PREDICTIVE" and not therapies:

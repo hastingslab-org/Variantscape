@@ -27,7 +27,7 @@ CATEGORIES = ("Variant", "Cancer", "Treatment")
 SOURCE_LITERATURE = "literature"      # verified in the abstract
 SOURCE_COOCCURRENCE = "cooccurrence"  # only co-mentioned
 ARTIFACTS = ("network_graph_weighted.gml", "final_variant_treatment_consensus.csv", "metadata_mapping_transposed.csv",
-             "curated_associations.csv", "verified_associations.csv", "gene_aliases.csv")
+             "curated_associations.csv", "verified_associations.csv", "gene_aliases.csv", "cancer_synonyms.csv")
 
 
 @dataclass
@@ -217,6 +217,14 @@ def annotate_variant_nodes(G: nx.Graph, normalizer: VariantNormalizer) -> None:
             data["fusion_partners"] = ";".join(sorted(normalizer.fusion_partners.get(node, ())))
 
 
+def annotate_cancer_nodes(G: nx.Graph, mapper) -> None:
+    """Add the OncoTree code, lineage (tissue -> ... -> type codes), tissue and main type
+    to the cancer nodes; EvidenceDb rolls subtypes up into broader types with the lineage."""
+    for node, data in G.nodes(data=True):
+        if data.get("category") == "Cancer":
+            data.update(mapper.node_attributes(node))
+
+
 def verified_associations(verdicts: dict[str, list[Verdict]], designs: dict[str, str]) -> pd.DataFrame:
     """``verified_associations.csv``: one row per verified (variant, cancer, treatment) or (variant, cancer).
 
@@ -267,6 +275,13 @@ def write_outputs(out_dir: Path, G: nx.Graph, consensus: pd.DataFrame, entities:
         columns=["Entity", "Category"],
     ).to_csv(out_dir / "metadata_mapping_transposed.csv", index=False)
 
+    # Names and synonyms per cancer node, for EvidenceDb's cancer search
+    pd.DataFrame(
+        [(name.capitalize(), str(syns)) for name, syns in sorted(cancer_synonyms.items())
+         if name in G and G.nodes[name]["category"] == "Cancer"],
+        columns=["name", "synonyms"],
+    ).to_csv(out_dir / "cancer_synonyms.csv", index=False)
+
     # Supporting outputs (not read by EvidenceDb)
     pd.DataFrame(
         [(pid, designs.get(pid), study_weight(designs.get(pid)), cat, e)
@@ -274,11 +289,6 @@ def write_outputs(out_dir: Path, G: nx.Graph, consensus: pd.DataFrame, entities:
         columns=["PaperId", "Study_design", "Study_weight", "Category", "Entity"],
     ).to_csv(out_dir / "paper_entities.csv", index=False)
     votes.to_csv(out_dir / "variant_treatment_votes.csv", index=False)
-    pd.DataFrame(
-        [(name.capitalize(), str(syns)) for name, syns in sorted(cancer_synonyms.items())
-         if name in G and G.nodes[name]["category"] == "Cancer"],
-        columns=["name", "synonyms"],
-    ).to_csv(out_dir / "cancer_synonyms.csv", index=False)
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=2, default=str))
 
 

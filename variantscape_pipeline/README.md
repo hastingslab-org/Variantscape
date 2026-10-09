@@ -11,6 +11,7 @@ produces the files EvidenceDb reads:
 | `metadata_mapping_transposed.csv`       | entity → category (`Variant`, `Cancer`, `Treatment`) for autosuggest                                          |
 | `curated_associations.csv`              | expert-curated CIViC associations (disease-specific), listed first in EvidenceDb                                     |
 | `verified_associations.csv`             | literature associations verified against the abstracts (variant, cancer, treatment, relation, papers, example quote) |
+| `cancer_synonyms.csv`                   | names, synonyms and OncoTree codes per cancer node, for the cancer search                                           |
 | `gene_aliases.csv`                      | alias → gene symbol for the graph's genes (HGNC aliases/previous symbols), so searches for e.g. MEK1 or HER2 work   |
 
 ## Setup
@@ -111,7 +112,8 @@ startup, so restart it after a deploy.
 State lives in `pipeline_data/variantscape.sqlite`. Each stage only handles
 papers it has not processed yet. Failed LLM calls are not stored and are
 retried on the next run. Reference data (CIViC genes, therapies, diseases and
-variants; the OncoKB cancer gene list; MONDO synonyms; the Disease Ontology bulk `doid.json`) is snapshotted
+variants; the OncoKB cancer gene list; MONDO synonyms; the Disease Ontology bulk `doid.json`; HGNC gene
+symbols; OncoTree tumour types) is snapshotted
 under `pipeline_data/reference/<date>/`.
 
 | Stage            | Notebook                  | What it does                                                                                     |
@@ -136,10 +138,38 @@ was sent to the LLM. The graph content is the same, because it only ever used
 papers with all four entity types.
 
 Outputs go to `pipeline_data/outputs/<run-id>/` and `pipeline_data/outputs/latest/`.
-Besides the three artifacts, each output folder contains `paper_entities.csv`
+Besides the EvidenceDb artifacts, each output folder contains `paper_entities.csv`
 (per-paper entities and weights), `variant_treatment_votes.csv` (raw votes
-behind the consensus), `cancer_synonyms.csv` (in the format of EvidenceDb's
-`Network_cancer_synonyms.csv`; not deployed) and `summary.json`.
+behind the consensus), `cancer_mapping.csv` (CIViC disease -> OncoTree type, see
+below) and `summary.json`.
+
+## Cancer types (OncoTree)
+
+Cancer nodes are [OncoTree](https://oncotree.mskcc.org) tumour types, so that every
+cancer type has an organ site and a clinically used granularity (reviewers had
+criticised the earlier keyword harmonization: site-less nodes such as "squamous cell
+cancer", all lung cancers lumped together, GIST merged with GI carcinomas).
+
+- **Mapping** (`oncotree.py`): cancer terms map to CIViC diseases as before; each
+  CIViC disease maps to an OncoTree type through Disease Ontology NCIt/UMLS
+  cross-references, names, the nearest mappable DO ancestor, or the organ in its
+  name, plus a small rule table (mainly leukaemias). Candidates in another organ
+  than the one a disease is named after are skipped.
+- **Nodes** are named after the OncoTree type ("lung adenocarcinoma",
+  "non-small cell lung cancer"); a disease mapped only to an organ gets the
+  tissue's main type ("lung cancer"). "..., NOS" types use their parent.
+- **Dropped:** histologies without a site (squamous cell carcinoma NOS, mucinous
+  adenocarcinoma), too generic names (leukemia, hematologic cancer) and diseases
+  OncoTree has no type for (mostly syndromes and very rare entities).
+- **Attributes:** cancer nodes have `oncotree_code`, `oncotree_lineage` (codes from
+  the tissue down, e.g. `LUNG;NSCLC;LUAD`), `oncotree_tissue` and
+  `oncotree_main_type`. EvidenceDb uses the lineage to include the evidence for
+  subtypes when searching a broader type, marked "via <subtype>".
+- **Review:** `cancer_mapping.csv` lists every CIViC disease with its node, method
+  and a `review` note (dropped, coarse ancestor mapping), with the Disease Ontology
+  class as a hint for benign entities and syndromes (not reliable on its own: DO
+  calls low-grade gliomas benign). The rules have not been clinically reviewed yet;
+  `MANUAL_RULES` in `oncotree.py` is where corrections go.
 
 ## Variant nodes and alteration classes
 
@@ -233,7 +263,8 @@ accepted CIViC knowledge to the graph with separate provenance:
   - Diagnostic and prognostic records give variant–cancer edges.
   - "Does not support" records are kept as negative evidence, e.g. *No response*.
 - **Mapping:** CIViC names go through the same variant normalization and cancer
-  harmonization as the literature, so they land on the same nodes.
+  type mapping as the literature, so they land on the same nodes. Records whose
+  disease has no OncoTree type are skipped (`unmapped_disease`).
   - Molecular profiles combining several variants, non-specific variants
     ("Mutation", "Amplification", "Fusion", "Expression", codon-only such as
     "V600") and generic diseases ("Cancer") cannot be mapped to a single node.

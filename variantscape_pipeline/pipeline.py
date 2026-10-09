@@ -21,6 +21,8 @@ from functools import cached_property
 from pathlib import Path
 from typing import Callable, Sequence
 
+import pandas as pd
+
 from . import build as build_mod
 from .cancers import CancerExtractor, CancerMapper
 from .clean import clean_batch, dedupe_key
@@ -312,6 +314,7 @@ class Pipeline:
         records, skipped = build_curated_records(self.reference, self.cancer_mapper, self.normalizer, self.gene_set)
         curated_stats = add_curated_to_graph(G, records)
         build_mod.annotate_variant_nodes(G, self.normalizer)
+        build_mod.annotate_cancer_nodes(G, self.cancer_mapper)
         coverage_table, coverage = coverage_report(records, literature_graph, consensus, skipped)
         self.summary["build"] = {
             "gene_set": self.gene_set.name,
@@ -324,6 +327,7 @@ class Pipeline:
             "variants_dropped_not_in_text": self.normalizer.ungrounded,
             "verification": verification_stats(verdicts, entities),
             "curated": {"records": len(records), **curated_stats, **coverage},
+            "cancer_types": cancer_type_stats(G, self.cancer_mapper),
             "reference_snapshot": str(self.reference.source_dir),
         }
 
@@ -334,7 +338,8 @@ class Pipeline:
             tables={"curated_associations.csv": records_frame(records, literature_graph, consensus),
                     "curated_coverage.csv": coverage_table,
                     "verified_associations.csv": verified_table,
-                    "gene_aliases.csv": self.gene_alias_frame(G)},
+                    "gene_aliases.csv": self.gene_alias_frame(G),
+                    "cancer_mapping.csv": pd.DataFrame(self.cancer_mapper.mapping_table())},
         )
         if html:
             from .network_html import write_network_html
@@ -358,11 +363,21 @@ class Pipeline:
 
     def gene_alias_frame(self, G):
         """Aliases of the graph's variant genes, for searching EvidenceDb by alias (MEK1 -> MAP2K1)."""
-        import pandas as pd
-
         self.normalizer  # configures the HGNC symbols
         genes = {n.rpartition("_")[2] for n, d in G.nodes(data=True) if d.get("category") == "Variant"}
         return pd.DataFrame(gene_alias_table(genes), columns=["alias", "symbol"])
+
+
+def cancer_type_stats(G, mapper: CancerMapper) -> dict:
+    """Cancer nodes and how the CIViC diseases were mapped to OncoTree (for summary.json)."""
+    table = pd.DataFrame(mapper.mapping_table())
+    nodes = [d for _, d in G.nodes(data=True) if d.get("category") == "Cancer"]
+    return {
+        "cancer_nodes": len(nodes),
+        "cancer_nodes_without_oncotree": sum(1 for d in nodes if not d.get("oncotree_code")),
+        "civic_diseases_by_method": table["method"].value_counts().to_dict() if len(table) else {},
+        "civic_diseases_dropped": int((table["node"] == "").sum()) if len(table) else 0,
+    }
 
 
 def verification_stats(verdicts: dict, entities: dict) -> dict:

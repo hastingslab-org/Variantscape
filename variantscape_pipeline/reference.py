@@ -18,6 +18,8 @@ from pathlib import Path
 
 import requests
 
+from .oncotree import fetch_oncotree
+
 log = logging.getLogger(__name__)
 
 CIVIC_GRAPHQL_URL = "https://civicdb.org/api/graphql"
@@ -185,6 +187,7 @@ class Reference:
     evidence: list[dict] = field(default_factory=list)     # accepted CIViC evidence items
     assertions: list[dict] = field(default_factory=list)   # accepted CIViC assertions
     hgnc: dict = field(default_factory=dict)                # {"approved": [...], "aliases": {alias: symbol}}
+    oncotree: list[dict] = field(default_factory=list)      # OncoTree tumour types
     source_dir: Path | None = field(default=None)
 
     # ------------------------------------------------------------------ #
@@ -216,12 +219,13 @@ class Reference:
             "civic_evidence": lambda: _paginate(EVIDENCE_QUERY, "evidenceItems"),
             "civic_assertions": lambda: _paginate(ASSERTIONS_QUERY, "assertions"),
             "hgnc": _fetch_hgnc,
+            "oncotree": fetch_oncotree,
         }
         for name, fetch in backfill.items():
             if not (snapshot / f"{name}.json").exists():
                 (snapshot / f"{name}.json").write_text(json.dumps(fetch(), indent=1))
         return cls(rd("genes"), rd("therapies"), rd("diseases"), rd("variants"), rd("oncokb_genes"),
-                   rd("civic_evidence"), rd("civic_assertions"), rd("hgnc"), snapshot)
+                   rd("civic_evidence"), rd("civic_assertions"), rd("hgnc"), rd("oncotree"), snapshot)
 
     @classmethod
     def _fetch(cls, snapshot: Path, cache_dir: Path) -> "Reference":
@@ -279,6 +283,8 @@ class Reference:
 
         log.info("Downloading HGNC gene symbols ...")
         hgnc = _fetch_hgnc()
+        log.info("Fetching OncoTree ...")
+        oncotree = fetch_oncotree()
 
         log.info("Fetching CIViC evidence items and assertions ...")
         evidence = _paginate(EVIDENCE_QUERY, "evidenceItems")
@@ -286,13 +292,15 @@ class Reference:
 
         for name, obj in (("genes", genes), ("oncokb_genes", oncokb_genes), ("therapies", therapies),
                           ("diseases", disease_rows), ("variants", variants),
-                          ("civic_evidence", evidence), ("civic_assertions", assertions), ("hgnc", hgnc)):
+                          ("civic_evidence", evidence), ("civic_assertions", assertions), ("hgnc", hgnc),
+                          ("oncotree", oncotree)):
             (snapshot / f"{name}.json").write_text(json.dumps(obj, indent=1))
         (snapshot / "complete").write_text("ok")
         log.info("Reference snapshot written to %s (%d CIViC genes, %d OncoKB genes, %d therapies, %d diseases, "
                  "%d variants, %d evidence items, %d assertions)", snapshot, len(genes), len(oncokb_genes),
                  len(therapies), len(disease_rows), len(variants), len(evidence), len(assertions))
-        return cls(genes, therapies, disease_rows, variants, oncokb_genes, evidence, assertions, hgnc, snapshot)
+        return cls(genes, therapies, disease_rows, variants, oncokb_genes, evidence, assertions, hgnc, oncotree,
+                   snapshot)
 
 
 def _fetch_hgnc() -> dict:

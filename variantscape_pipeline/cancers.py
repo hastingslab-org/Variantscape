@@ -3,8 +3,9 @@
 - Extraction (04.1 section 3): two SciSpaCy NER models, then term cleaning.
   Cleaned raw terms are stored per paper.
 - Mapping (04.1 section 4): terms -> CIViC disease names via names and synonyms.
-- Harmonization (06.02 step 1): CIViC names -> the cancer node names of the
-  network (DO-derived "final parents", keyword mapping, leukemia/lymphoma).
+- Harmonization: CIViC diseases -> OncoTree tumour types, the cancer nodes of the
+  network (``oncotree.py``; replaces the notebooks' keyword mapping, which lumped
+  e.g. all lung cancers together and produced site-less nodes).
 
 Mapping and harmonization depend on reference data only and are recomputed on
 every build from the stored raw terms.
@@ -13,10 +14,12 @@ every build from the stored raw terms.
 from __future__ import annotations
 
 import logging
+from collections import defaultdict
 import re
 import unicodedata
 from typing import Iterable, Sequence
 
+from .oncotree import OncoTreeMapper, do_class, load_do_terms
 from .reference import Reference
 
 log = logging.getLogger(__name__)
@@ -159,98 +162,21 @@ def disease_synonyms(disease: dict) -> list[str]:
 
 
 # --------------------------------------------------------------------------- #
-# Harmonization (04.1 section 5 final parents, 06.02 step 1)
+# Harmonization: CIViC disease -> OncoTree cancer node (oncotree.py)
 # --------------------------------------------------------------------------- #
-# 04.1 keyword mapping (its dict literal listed "glioblastoma" twice; the later value wins)
-FINAL_PARENT_KEYWORDS = {
-    "skin": "skin cancer", "breast": "breast cancer", "mammary": "breast cancer",
-    "mucinous": "mucinous cancer", "lung": "lung cancer", "bronchio": "lung cancer",
-    "spindle cell": "spindle cell cancer", "acute myeloid leukemia": "acute myeloid leukemia",
-    "salivary gland": "salivary gland cancer", "renal": "renal cancer", "prostate": "prostate cancer",
-    "pancreatic": "pancreatic cancer", "medulloblastoma": "medulloblastoma",
-    "lymphoblastic leukemia": "lymphoblastic leukemia", "myeloid": "myeloid cancer",
-    "kidney": "kidney cancer", "head and neck": "head and neck cancer",
-    "gastrointestinal": "gastrointestinal cancer", "neurofibroma": "neurofibroma",
-    "ovarian": "ovarian cancer", "ovary": "ovarian cancer", "supratentorial ependymoma": "supratentorial ependymoma",
-    "cervix": "cervix cancer", "cervical": "cervix cancer", "colorectal": "colon cancer", "colon": "colon cancer",
-    "endometri": "endometrial cancer", "melano": "melanoma", "laryngeal": "laryngeal cancer", "glioma": "glioma",
-    "bone": "bone cancer", "osteo": "bone cancer", "peritoneal": "peritoneal cancer", "astrocytoma": "astrocytoma",
-    "glioblastoma": "glioma", "gastric": "gastric cancer", "mesothelioma": "mesothelioma",
-    "esophag": "esophagus cancer", "thyroid": "thyroid cancer", "thymus": "thymus cancer",
-    "uterus": "uterine cancer", "spinal": "spinal cancer", "hepatocellular": "liver cancer",
-    "cholangio": "cholangio cancer", "bile duct": "biliary tract cancer", "gliosarcoma": "glioma",
-    "myeloid cancer": "hematologic cancer", "myeloproliferative cancer": "hematologic cancer",
-    "myelodysplastic syndrome": "hematologic cancer", "essential thrombocythemia": "hematologic cancer",
-    "myelofibrosis": "hematologic cancer", "barrett": "esophagus cancer", "fraumeni": "li-fraumeni syndrome",
-    "liposarcoma": "liposarcoma", "papillary": "papillary cancer",
-}
-
-# 06.02 keyword mapping used to harmonize cancer columns
-HARMONIZE_KEYWORDS = dict(FINAL_PARENT_KEYWORDS)
-HARMONIZE_KEYWORDS["glioblastoma"] = "glioblastoma"
-
-_UNWANTED_PARENTS = {"cancer", "carcinoma", "adenocarcinoma", "unknown", "cell type cancer",
-                     "cell type benign neoplasm", "autosomal dominant disease", "autosomal recessive disease",
-                     "syndrome"}
-_GENERIC_PARENT = {"none", "cancer", "carcinoma", "solid cancer", "solid tumor", "solid tumors, advanced"}
-
-
-def _classify_leukemia_lymphoma(name: str) -> str | None:
-    lower = name.lower()
-    leukemia = "leukemia" in lower or "leukemic" in lower
-    lymphoma = "lymphoma" in lower
-    if leukemia and lymphoma:
-        return "leukemia/lymphoma"
-    if leukemia:
-        return "leukemia"
-    if lymphoma:
-        return "lymphoma"
-    return None
-
-
-def compute_final_parents(diseases: Sequence[dict]) -> set[str]:
-    """Port of 04.1 'Cancer parent mapping' producing the set of final parents."""
-    parents: set[str] = set()
-    for d in diseases:
-        name = _fix_disease_name(d["name"])
-        parent_names = ", ".join(d.get("do_parent_names") or [])
-        parent_names = re.sub(r"\b(?:malignant|childhood|adult|juvenile)\b", "", parent_names, flags=re.IGNORECASE)
-        parent_names = re.sub(r"\s+", " ", parent_names).strip()
-        final = name
-        if parent_names:
-            for parent in reversed([p.strip() for p in parent_names.split(",")]):
-                if parent.lower() not in _UNWANTED_PARENTS:
-                    final = parent
-                    break
-        if name.lower() in GENERIC_DISEASE_NAMES | {"doid:", "solid cancer"} and final.lower() in _GENERIC_PARENT:
-            continue
-        final = re.sub(r"\b(?:malignant|childhood|adult|juvenile|benign)\b", "", final, flags=re.IGNORECASE).strip()
-        for old in ("neoplasm", "carcinoma", "adenocarcinoma", "adenocancer"):
-            final = re.sub(old, "cancer", final, flags=re.IGNORECASE)
-        final = re.sub("leukaemia", "leukemia", final, flags=re.IGNORECASE)
-        final = next((v for k, v in FINAL_PARENT_KEYWORDS.items() if k in final.lower()), final)
-        final = _classify_leukemia_lymphoma(final) or final
-        lower = final.lower()
-        if re.search(r"\bbladder\b", lower) and "gallbladder" not in lower:
-            final = "bladder cancer"
-        elif "gallbladder" in lower:
-            final = "gallbladder cancer"
-        else:
-            final = next((v for k, v in FINAL_PARENT_KEYWORDS.items() if re.search(rf"\b{re.escape(k)}\b", lower)), final)
-        parents.add(final.lower())
-    return parents
+_METHOD_RANK = {"manual": 0, "xref": 1, "name": 2, "ancestor": 3, "fallback": 4, "organ": 5, "unmapped": 6}
 
 
 class CancerMapper:
-    """Maps cleaned raw cancer terms to harmonized cancer node names."""
+    """Maps cleaned raw cancer terms to OncoTree cancer node names."""
 
     def __init__(self, reference: Reference, use_synonyms: bool = True):
-        self.final_parents = compute_final_parents(reference.diseases)
         rows = [
-            {"name": _fix_disease_name(d["name"]), "synonyms": disease_synonyms(d)}
+            {"name": _fix_disease_name(d["name"]), "synonyms": disease_synonyms(d),
+             "doid": f"DOID:{d['doid']}" if d.get("doid") else None}
             for d in reference.diseases
             if d["name"] and _fix_disease_name(d["name"]).lower() not in GENERIC_DISEASE_NAMES
-        ] + MANUAL_DISEASES
+        ] + [{**m, "doid": None} for m in MANUAL_DISEASES]
         # 04.1 round-tripped the synonym lists through a CSV and then ignored them
         # (they were no longer Python lists), so only disease names were matched.
         # Synonyms are used here by default; names take precedence over synonyms.
@@ -268,6 +194,20 @@ class CancerMapper:
         self.mapping = mapping
         self.synonym_rows = rows
 
+        do_terms = load_do_terms(reference.source_dir / "doid.json") if reference.source_dir else {}
+        self.oncotree = OncoTreeMapper(reference.oncotree, do_terms)
+        if not reference.oncotree:
+            log.warning("No OncoTree in the reference snapshot: no cancer types can be mapped")
+        # Normalized CIViC name -> mapping; when several CIViC diseases normalize to the
+        # same name (Lung Cancer, Lung Carcinoma) the best-founded mapping wins
+        self.disease_mappings = {}
+        for row in rows:
+            m = self.oncotree.map_disease(row["name"], row["doid"], row["synonyms"])
+            key = normalize_cancer_term(row["name"])
+            old = self.disease_mappings.get(key)
+            if old is None or (old.code is None, _METHOD_RANK[old.method]) > (m.code is None, _METHOD_RANK[m.method]):
+                self.disease_mappings[key] = m
+
     def to_civic(self, terms: Iterable[str]) -> set[str]:
         mapped = set()
         for term in terms:
@@ -281,22 +221,50 @@ class CancerMapper:
         mapped.discard("cancer")
         return mapped
 
-    def harmonize(self, civic_name: str) -> str:
-        lower = civic_name.lower()
-        if lower in self.final_parents:
-            return lower
-        for keyword, replacement in HARMONIZE_KEYWORDS.items():
-            if re.search(rf"\b{re.escape(keyword)}\b", lower):
-                return replacement
-        return _classify_leukemia_lymphoma(lower) or civic_name
+    def harmonize(self, civic_name: str) -> str | None:
+        """Cancer node for a (normalized) CIViC disease name; None if it is dropped."""
+        m = self.disease_mappings.get(normalize_cancer_term(civic_name))
+        if m is None:
+            m = self.oncotree.map_disease(civic_name)
+        return m.node
 
     def map_terms(self, terms: Iterable[str]) -> set[str]:
-        return {self.harmonize(name) for name in self.to_civic(terms)}
+        return {node for name in self.to_civic(terms) if (node := self.harmonize(name))}
+
+    def node_attributes(self, node: str) -> dict[str, str]:
+        """OncoTree attributes of a cancer node (code, lineage of codes, tissue, main type)."""
+        code = self._code_of_node().get(node)
+        if not code:
+            return {}
+        t = self.oncotree.tree.by_code[code]
+        return {"oncotree_code": code, "oncotree_lineage": ";".join(self.oncotree.tree.lineage(code)),
+                "oncotree_tissue": t.get("tissue") or "", "oncotree_main_type": t.get("mainType") or ""}
+
+    def _code_of_node(self) -> dict[str, str]:
+        if not hasattr(self, "_node_codes"):
+            self._node_codes = {m.node: m.code for m in self.disease_mappings.values() if m.node}
+        return self._node_codes
+
+    def mapping_table(self) -> list[dict]:
+        """One row per CIViC disease name: its OncoTree mapping (``cancer_mapping.csv``)."""
+        tree = self.oncotree.tree
+        rows = []
+        for key, m in sorted(self.disease_mappings.items()):
+            t = tree.by_code.get(m.code) if m.code else None
+            rows.append({"civic_disease": m.disease, "doid": m.doid, "node": m.node or "",
+                         "oncotree_code": m.code or "", "matched_code": m.matched_code or "",
+                         "oncotree_tissue": t["tissue"] if t else "", "method": m.method,
+                         "do_class": do_class(m.doid or None, self.oncotree.do_terms), "review": m.reason})
+        return rows
 
     def synonym_table(self) -> dict[str, list[str]]:
-        """Harmonized cancer name -> CIViC names and synonyms that map to it."""
-        table: dict[str, set[str]] = {}
+        """Cancer node -> names that should find it: CIViC names and synonyms mapped to
+        it, its OncoTree name and code."""
+        table: dict[str, set[str]] = defaultdict(set)
         for row in self.synonym_rows:
             node = self.harmonize(normalize_cancer_term(row["name"]))
-            table.setdefault(node, set()).update([row["name"], *row["synonyms"]])
+            if node:
+                table[node].update([row["name"], *row["synonyms"]])
+        for node, code in self._code_of_node().items():
+            table[node].update([self.oncotree.tree.by_code[code]["name"], code])
         return {k: sorted(v) for k, v in table.items()}
