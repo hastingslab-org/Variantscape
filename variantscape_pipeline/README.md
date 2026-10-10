@@ -221,7 +221,9 @@ candidate association against the abstract:
   Prognostic, Reported (direction unclear) or Not reported. It must give a
   verbatim supporting quote, and a verdict only counts if that quote is found in
   the title/abstract (`rejected_quote_not_found` in `summary.json`).
-- **Model:** `LLM_MODEL`, or `LLM_VERIFY_MODEL` if set.
+- **Model:** `LLM_MODEL`, or `LLM_VERIFY_MODEL` if set; temperature `LLM_VERIFY_TEMPERATURE`
+  (default 0: with the provider default, re-running the same prompt changed about a quarter of
+  the labels, which the per-association vote cannot absorb).
 - **When papers are verified:** a paper is (re)verified when it has no
   verification with the current prompt version, or when its candidates changed
   (e.g. new CIViC aliases). Verdicts are parsed at build time and stored

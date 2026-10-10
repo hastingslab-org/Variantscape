@@ -8,4 +8,8 @@ final_figures/
 results_openalex/
 !requirements*.txt
 pipeline_data/
+pipeline_data_server/
 __pycache__/
+
+# Downloaded reference data (re-created by evaluations/prepare_reference_sets.py)
+evaluations/data/reference_sets/moalmanac.json

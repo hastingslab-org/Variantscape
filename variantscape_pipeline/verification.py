@@ -23,7 +23,9 @@ from typing import Iterable, Sequence
 
 from rapidfuzz import fuzz
 
-PROMPT_ID = "verify_v1"
+# v2: "Resistant" only when the variant itself causes/predicts resistance (v1 also labelled
+# acquired resistance through other mechanisms in patients with a sensitising variant)
+PROMPT_ID = "verify_v2"
 
 NOT_REPORTED = "Not reported"
 RELATIONS = ("Sensitive", "Resistant", "No response", "Diagnostic", "Prognostic", "Reported", NOT_REPORTED)
@@ -101,9 +103,15 @@ def build_prompt(title: str, abstract: str, candidates: Sequence[Candidate]) -> 
         "(a finding of the study or a statement made by the authors), not merely mentions the entities.\n\n"
         f"Title: {title}\nAbstract: {abstract}\n\n"
         "Candidates:\n" + "\n".join(lines) + "\n\n"
-        "Relations:\n"
-        "- Sensitive: the variant is reported to predict response or benefit to the treatment in this cancer\n"
-        "- Resistant: the variant is reported to cause or predict resistance to the treatment in this cancer\n"
+        "Relations (judge the candidate's variant as a biomarker for the treatment):\n"
+        "- Sensitive: patients, models or cells with the variant respond to or benefit from the treatment in this "
+        "cancer\n"
+        "- Resistant: the variant is reported to cause or predict resistance, reduced response or shorter benefit "
+        "to the treatment in this cancer, e.g. a mutation in the drug target, a variant acquired on treatment that "
+        "causes resistance, or cells/patients with the variant that keep growing or progress on the treatment. "
+        "Do NOT use Resistant for a variant only because patients who carry it later develop resistance through "
+        "a different alteration or mechanism; for that variant use Sensitive if a response is reported, "
+        "otherwise Reported\n"
         "- No response: the treatment is reported as not effective for this variant in this cancer\n"
         "- Diagnostic: the variant is reported as diagnostic for this cancer\n"
         "- Prognostic: the variant is reported as prognostic in this cancer\n"
@@ -111,6 +119,8 @@ def build_prompt(title: str, abstract: str, candidates: Sequence[Candidate]) -> 
         "- Not reported: the association is not reported (only co-mentioned, mentioned in background, "
         "a different variant/cancer/treatment, or an entity that is wrong for this text)\n\n"
         "For candidates without a treatment, judge the variant-cancer association only.\n"
+        "Example: in \"NRAS mutations caused acquired resistance to vemurafenib in BRAF V600E melanoma\", "
+        "NRAS with vemurafenib is Resistant, BRAF V600E with vemurafenib is not (Sensitive or Reported).\n"
         "Answer with only a JSON array, one object per candidate:\n"
         '[{"id": 1, "relation": "<relation>", "quote": "<shortest verbatim excerpt from the title or abstract '
         'that supports it; empty for Not reported>"}]'

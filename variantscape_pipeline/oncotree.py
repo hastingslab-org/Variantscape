@@ -208,13 +208,22 @@ class OncoTree:
         return sorted(codes, key=lambda c: (-self.by_code[c]["level"], c))[0] if codes else None
 
     def from_xrefs(self, xrefs, organ=None) -> str | None:
-        codes = set()
+        """OncoTree type sharing the most NCIt / UMLS codes with ``xrefs`` (OncoTree has
+        subtypes carrying their parent's UMLS code, e.g. MLNFGFR1), then the most specific."""
+        hits: dict[str, int] = defaultdict(int)
         for x in xrefs:
             if x.startswith("NCI:"):
-                codes |= self.by_nci.get(x[4:], set())
+                matched = self.by_nci.get(x[4:], set())
             elif x.startswith("UMLS_CUI:"):
-                codes |= self.by_umls.get(x[9:], set())
-        return self.best(codes, organ)
+                matched = self.by_umls.get(x[9:], set())
+            else:
+                continue
+            for code in matched:
+                hits[code] += 1
+        if not hits:
+            return None
+        top = max(hits.values())
+        return self.best({c for c, n in hits.items() if n == top}, organ) or self.best(set(hits), organ)
 
     def from_names(self, names, organ=None) -> str | None:
         codes = set()
@@ -286,14 +295,24 @@ class OncoTreeMapper:
             method = "fallback" if code else "unmapped"
         return code, method, steps
 
+    def node_code(self, code: str | None) -> tuple[str | None, str]:
+        """OncoTree code used for a cancer node: "..., NOS" types become their parent
+        ("AML, NOS" -> AML, "Breast Neoplasm, NOS" -> Breast); NOS types without a
+        site (squamous cell carcinoma NOS) are dropped. Returns (code or None, reason)."""
+        t = self.tree.by_code.get(code) if code else None
+        if not t:
+            return None, "unknown OncoTree code" if code else ""
+        if t["tissue"] == "Other" and "NOS" in code:
+            return None, "no site (OncoTree NOS type)"
+        if code.endswith("NOS") and ", NOS" in t["name"] and t.get("parent") in self.tree.by_code:
+            return t["parent"], ""
+        return code, ""
+
     def map_disease(self, name: str, doid: str | None = None, synonyms=()) -> DiseaseMapping:
         code, method, steps = self.match(name, doid, synonyms)
-        matched, reason = code, ""
+        matched = code
         t = self.tree.by_code.get(code) if code else None
-        if t and t["tissue"] == "Other" and "NOS" in code:
-            code, reason = None, "no site (OncoTree NOS type)"
-        elif t and code.endswith("NOS") and ", NOS" in t["name"] and t.get("parent") in self.tree.by_code:
-            code = t["parent"]   # "AML, NOS" -> AML, "Breast Neoplasm, NOS" -> Breast
+        code, reason = self.node_code(code)
         if not t:
             reason = "too generic" if method == "manual" else "unmapped"
         if method == "ancestor" and steps > 1:

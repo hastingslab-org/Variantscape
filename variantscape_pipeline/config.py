@@ -101,6 +101,7 @@ class Settings:
     llm_model: str
     llm_verify_model: str
     llm_temperature: float | None
+    llm_verify_temperature: float | None
     llm_max_workers: int
     llm_timeout: float
     gene_set: str
@@ -147,6 +148,8 @@ class Settings:
             # Optional separate model for the association verification step
             llm_verify_model=os.getenv("LLM_VERIFY_MODEL") or os.getenv("LLM_MODEL", DEFAULT_LLM_MODEL),
             llm_temperature=_optional_float(os.getenv("LLM_TEMPERATURE")),
+            # The verifier's labels are voted on per association: deterministic answers by default
+            llm_verify_temperature=_optional_float(os.getenv("LLM_VERIFY_TEMPERATURE", "0")),
             llm_max_workers=int(os.getenv("LLM_MAX_WORKERS", "8")),
             llm_timeout=float(os.getenv("LLM_TIMEOUT", "120")),
             gene_set=gene_set_spec(os.getenv("VARIANTSCAPE_GENE_SET", "oncology")),

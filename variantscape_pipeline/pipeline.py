@@ -261,9 +261,9 @@ class Pipeline:
     @cached_property
     def verify_llm(self) -> LLMClient:
         s = self.settings
-        if s.llm_verify_model == s.llm_model:
+        if s.llm_verify_model == s.llm_model and s.llm_verify_temperature == s.llm_temperature:
             return self.llm
-        return LLMClient(s.llm_api_key, s.llm_base_url, s.llm_verify_model, s.llm_temperature, s.llm_timeout)
+        return LLMClient(s.llm_api_key, s.llm_base_url, s.llm_verify_model, s.llm_verify_temperature, s.llm_timeout)
 
     def verify(self) -> None:
         """Verify each included paper's mined associations against its abstract.
