@@ -304,6 +304,8 @@ class Pipeline:
         verdicts = build_mod.collect_verdicts(self.store, self.normalizer, entities)
         G, graph_stats = build_mod.build_graph(entities, designs, verdicts)
         verified_table = build_mod.verified_associations(verdicts, designs)
+        evidence_table = build_mod.verified_evidence(verdicts, designs)
+        papers_table = build_mod.evidence_papers(self.store, sorted(set(evidence_table["paper_id"])))
 
         votes = build_mod.collect_votes(verdicts)
         consensus = compute_consensus(votes)
@@ -338,6 +340,8 @@ class Pipeline:
             tables={"curated_associations.csv": records_frame(records, literature_graph, consensus),
                     "curated_coverage.csv": coverage_table,
                     "verified_associations.csv": verified_table,
+                    "verified_evidence.csv": evidence_table,
+                    "variantscape_papers.csv": papers_table,
                     "gene_aliases.csv": self.gene_alias_frame(G),
                     "cancer_mapping.csv": pd.DataFrame(self.cancer_mapper.mapping_table())},
         )

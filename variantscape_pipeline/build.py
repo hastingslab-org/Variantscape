@@ -27,7 +27,8 @@ CATEGORIES = ("Variant", "Cancer", "Treatment")
 SOURCE_LITERATURE = "literature"      # verified in the abstract
 SOURCE_COOCCURRENCE = "cooccurrence"  # only co-mentioned
 ARTIFACTS = ("network_graph_weighted.gml", "final_variant_treatment_consensus.csv", "metadata_mapping_transposed.csv",
-             "curated_associations.csv", "verified_associations.csv", "gene_aliases.csv", "cancer_synonyms.csv")
+             "curated_associations.csv", "verified_associations.csv", "gene_aliases.csv", "cancer_synonyms.csv",
+             "verified_evidence.csv", "variantscape_papers.csv")
 
 
 @dataclass
@@ -260,6 +261,35 @@ def verified_associations(verdicts: dict[str, list[Verdict]], designs: dict[str,
             "example_quote": items[0][1].quote, "example_paper_id": items[0][0],
         })
     return pd.DataFrame(rows, columns=columns).sort_values(["weight", "variant"], ascending=[False, True])
+
+
+def verified_evidence(verdicts: dict[str, list[Verdict]], designs: dict[str, str]) -> pd.DataFrame:
+    """``verified_evidence.csv``: one row per paper and verified association, with that
+    paper's relation and supporting quote (EvidenceDb lists them per association)."""
+    rows = [
+        {"variant": v.candidate.variant, "cancer": v.candidate.cancer, "treatment": v.candidate.treatment,
+         "paper_id": pid, "relation": v.relation, "quote": v.quote, "study_design": designs.get(pid) or ""}
+        for pid, vs in verdicts.items() for v in vs if v.verified
+    ]
+    columns = ["variant", "cancer", "treatment", "paper_id", "relation", "quote", "study_design"]
+    return pd.DataFrame(rows, columns=columns).sort_values(["variant", "cancer", "treatment", "paper_id"])
+
+
+def evidence_papers(store: Store, paper_ids: list[str]) -> pd.DataFrame:
+    """``variantscape_papers.csv``: the papers behind verified associations (OpenAlex ids as
+    ``W...``), with title, year, authors and abstract. EvidenceDb shows them per association;
+    ``refresh_literature_db.py`` loads them into the LiteratureDB."""
+    frames = []
+    for i in range(0, len(paper_ids), 900):
+        chunk = paper_ids[i:i + 900]
+        frames.append(store.query_df(
+            f"SELECT paper_id, title, pub_year, authors, abstract FROM papers "
+            f"WHERE paper_id IN ({','.join('?' * len(chunk))})", chunk))
+    df = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(
+        columns=["paper_id", "title", "pub_year", "authors", "abstract"])
+    df.insert(0, "PaperId", "W" + df["paper_id"].astype(str))
+    df["authors"] = df["authors"].fillna("").str.slice(0, 300)
+    return df.rename(columns={"pub_year": "year"}).sort_values("paper_id")
 
 
 def write_outputs(out_dir: Path, G: nx.Graph, consensus: pd.DataFrame, entities: dict, designs: dict,

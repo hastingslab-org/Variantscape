@@ -11,6 +11,8 @@ produces the files EvidenceDb reads:
 | `metadata_mapping_transposed.csv`       | entity → category (`Variant`, `Cancer`, `Treatment`) for autosuggest                                          |
 | `curated_associations.csv`              | expert-curated CIViC associations (disease-specific), listed first in EvidenceDb                                     |
 | `verified_associations.csv`             | literature associations verified against the abstracts (variant, cancer, treatment, relation, papers, example quote) |
+| `verified_evidence.csv`                 | one row per paper and verified association (that paper's relation and quote): the clickable evidence lists          |
+| `variantscape_papers.csv`               | the papers behind verified associations (OpenAlex id, title, year, authors, abstract); also loaded into the LiteratureDB |
 | `cancer_synonyms.csv`                   | names, synonyms and OncoTree codes per cancer node, for the cancer search                                           |
 | `gene_aliases.csv`                      | alias → gene symbol for the graph's genes (HGNC aliases/previous symbols), so searches for e.g. MEK1 or HER2 work   |
 
