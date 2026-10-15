@@ -27,6 +27,12 @@ class LLMClient:
         self.temperature = temperature
         self.max_retries = max_retries
 
+    def _redact(self, exc: Exception) -> str:
+        """The error text with the API key masked (some errors quote the request header)."""
+        text = f"{exc} (cause: {exc.__cause__!r})" if exc.__cause__ else str(exc)
+        key = str(self.client.api_key or "").strip()
+        return text.replace(key, key[:2] + "…" + key[-4:]) if len(key) >= 8 else text
+
     def complete(self, prompt: str, system: str = SYSTEM_MSG, max_tokens: int | None = None) -> str | None:
         """Return the model's answer, or ``None`` if all retries failed.
 
@@ -48,7 +54,7 @@ class LLMClient:
                 )
                 return completion.choices[0].message.content or ""
             except Exception as exc:  # noqa: BLE001 - any API error is retried
-                log.warning("LLM call failed (attempt %d/%d): %s", attempt, self.max_retries, exc)
+                log.warning("LLM call failed (attempt %d/%d): %s", attempt, self.max_retries, self._redact(exc))
                 time.sleep(delay + random.random())
                 delay = min(delay * 2, 60)
         return None
