@@ -63,15 +63,103 @@ def parse_variant_gene_items(response: str | None) -> list[tuple[str, str, str]]
     pairs = []
     for variant, gene in _PAIR_RE.findall(response):
         variant = re.sub(r"^\*+\s+", "", variant).strip(" '\"`")
-        if len(variant.split()) > 4:  # sentences, not variant names
+        if len(variant.split()) > 4 and len(split_variant_items(variant)) == 1:  # sentences, not variant names
             continue
         # "V600E (c.1799T>A)" -> "V600E"; "p.(Gly12Cys)" -> "p.Gly12Cys"
         m = re.match(r"^(.*?)\s*\((.*)\)\s*$", variant)
         if m:
             outer = re.sub(r"^[cpg]\.$", "", m.group(1).strip(), flags=re.IGNORECASE)
             variant = m.group(1).strip() if len(re.sub(r"\W", "", outer)) >= 2 else m.group(1) + m.group(2)
-        pairs.extend((v, gene.strip(), variant) for v in split_variant_list(variant))
+        items = [v for part in split_variant_items(variant) if len(part.split()) <= 4
+                 for v in split_variant_list(part)]
+        pairs.extend((v, g, variant) for v, g in assign_genes(items, gene.strip()))
     return pairs
+
+
+_LIST_SEP_RE = re.compile(r"\s*(?:;|&|\band\b)\s*", re.IGNORECASE)   # not "+": c.423 + 1G>A
+
+
+def split_variant_items(variant: str) -> list[str]:
+    """Split variant lists written with ; & or "and" (V600E;K601Q, G12D and G13D).
+    Only when every part has a position, so that e.g. "loss and gain" stays one item."""
+    if re.search(r"[()]|\bt\s*\d+\s*;", variant, re.IGNORECASE):     # t(4;14), c.[...;...]
+        return [variant]
+    parts = [p.strip() for p in _LIST_SEP_RE.split(variant) if p.strip()]
+    return parts if len(parts) > 1 and all(re.search(r"\d", p) for p in parts) else [variant]
+
+
+def split_gene_list(gene: str) -> list[str]:
+    """Genes of a slash list: CDK4/6 -> CDK4, CDK6; BRCA1/2; FGF3/4/19; CDKN2A/B -> CDKN2A, CDKN2B;
+    PD-L1/L2 -> PD-L1, PD-L2.
+    A single gene written with a slash alias (HER2/neu) is not split."""
+    raw = gene.strip()
+    if "/" not in raw or re.sub(r"[-_\s/]", "", raw.upper()) in GENE_ALIAS_MAP:
+        return [raw]
+    parts = [p.strip() for p in raw.split("/") if p.strip()]
+    first, out = parts[0], parts[:1]
+    for part in parts[1:]:
+        m = re.match(r"^(.*?)(\d+[A-Za-z]?)$", first)
+        if m and re.fullmatch(r"\d+[A-Za-z]?", part):
+            out.append(m.group(1) + part)
+        elif re.fullmatch(r"[A-Za-z]", part) and re.search(r"\d[A-Za-z]$", first):
+            out.append(first[:-1] + part)
+        elif (re.fullmatch(r"[A-Za-z]{1,2}\d+[A-Za-z]?", part) and len(part) < len(first)
+              and first[-len(part):][:1].upper() == part[:1].upper()):                 # PD-L1/L2 -> PD-L2
+            out.append(first[:-len(part)] + part)
+        else:
+            out.append(part)
+    return out
+
+
+def _class_term(variant: str) -> bool:
+    compact = re.sub(r"[\s_\-.()'\"`/]", "", variant.lower())
+    return compact in _AMPLIFICATION or compact in _ITD
+
+
+def _gene_for(variant: str, genes: list[str]) -> str | None:
+    """The one gene of ``genes`` a specific variant belongs to, if it can be told."""
+    compact = re.sub(r"[\s\-_.()]", "", variant.lower())
+    for candidates in (
+        [g for g in genes if compact.startswith(g.lower())],                          # RAC1P29S
+        [g for g in genes if (clean_variant_string(variant), g) in _KNOWN_VARIANTS],  # V600E -> BRAF
+    ):
+        if len(candidates) == 1:
+            return candidates[0]
+    m = re.match(r"^p?([a-z])(\d{1,4})", compact)
+    if m:
+        hot = [g for g in genes if f"{m.group(1)}{m.group(2)}" in HOTSPOT_CODONS.get(g, set())]
+        if len(hot) == 1:
+            return hot[0]
+    return None
+
+
+def assign_genes(variants: list[str], gene: str) -> list[tuple[str, str]]:
+    """(variant, gene) pairs for variants reported with a gene list (Gene: BRAF/RAC1, CDK4/6).
+
+    A fusion written with a slash (BCR/ABL fusion, or a fusion pair known to CIViC without
+    a specific change) keeps the gene pair for fusion detection. Otherwise class terms
+    (amplification, ITD) apply to every gene, and each specific variant goes to the gene
+    it belongs to (gene prefix, CIViC variant, hotspot codon, or the same position in
+    equally long lists); variants that cannot be attributed are dropped.
+    """
+    genes = split_gene_list(gene)
+    if len(genes) == 1:
+        return [(v, gene) for v in variants]
+    joined = " ".join(variants)
+    if _FUSION_WORDS_RE.search(joined) or (not re.search(r"\d", joined) and is_known_fusion(genes)):
+        return [(v, gene) for v in variants]
+    cleaned = list(dict.fromkeys(clean_gene(g) for g in genes))
+    if len(cleaned) == 1:
+        return [(v, cleaned[0]) for v in variants]
+    out = []
+    for i, v in enumerate(variants):
+        if _class_term(v):
+            out += [(v, g) for g in cleaned]
+            continue
+        g = _gene_for(v, cleaned) or (cleaned[i] if len(variants) == len(cleaned) else None)
+        if g:
+            out.append((v, g))
+    return out
 
 
 def split_variant_list(variant: str) -> list[str]:
@@ -113,12 +201,13 @@ _AA_RE = re.compile(rf"(?i)\b({'|'.join(AA_3_TO_1)})(\d+)({'|'.join(AA_3_TO_1)})
 EXON_MAP = {
     "exon19del": re.compile(r"^(?:ex(?:on)?19del(?:etion)?s?|19del|del19)$"),
     "exon20ins": re.compile(r"^(?:ex(?:on)?20ins(?:ertion)?s?|ins20)$"),
-    "exon14skipping": re.compile(r"^(?:ex(?:on)?14skip(?:ping)?(?:mutation|variant)?s?)$"),
+    "exon14skipping": re.compile(r"^(?:ex(?:on)?14(?:skip(?:ping)?|splic(?:e|ing)(?:site)?)(?:mutation|variant|alteration)?s?)$"),
 }
 
 UNWANTED_VARIANTS = {"vus", "c.", "loss", "indel"}
 REMOVE_IF_CONTAINS = {"mutation", "mutated", "mut", "mutant", "sensitive", "deficient", "null", "amplified",
-                      "deficiency", "deletion", "loxp", "loss", "knockdown", "flox"}
+                      "deficiency", "deletion", "loxp", "loss", "knockdown", "flox",
+                      "wildtype", "negative", "nonmutated", "unmutated"}
 MAX_VARIANT_LENGTH, MAX_GENE_LENGTH = 40, 10
 MIN_VARIANT_LENGTH, MIN_GENE_LENGTH = 2, 2
 SPECIFIC_REMOVALS = {("p53", "TP53")}
@@ -168,7 +257,7 @@ MANUAL_REMOVALS = {
     "ckras", "cbraf", "craf", "cgfr", "cegfr", "cnras", "cmet", "cmek1", "cher2",
     "cher3", "cher4", "cher", "chk2", "cpten", "cdlkb", "cher1", "cher5",
 }
-_PATTERN_EXCEPTIONS = {"v3", "v7"}
+_PATTERN_EXCEPTIONS = {"v3", "v7", "viii"}   # AR-V3/V7 splice variants, EGFRvIII
 
 # What a specific variant (after cleaning) can look like: protein change (v600e, e746a750del,
 # k574sfs*32, *10del), cDNA/genomic change (1799t>a, 5266dupc, 2235_2249del), rsID, exon or
@@ -186,6 +275,17 @@ _VARIANT_NOTATION_RE = re.compile(
     r"|[a-z][a-z0-9]*\*\d+[a-z]?"      # star alleles, e.g. ugt1a1*28, cyp2d6*4
     r")$"
 )
+
+# Configured from CIViC by VariantNormalizer: fusion pairs CIViC names (BCR::ABL1), and the
+# (cleaned variant, gene) pairs it knows, for attributing variants reported with gene lists
+_KNOWN_FUSION_PAIRS: set[frozenset[str]] = set()
+_KNOWN_VARIANTS: set[tuple[str, str]] = set()
+
+
+def is_known_fusion(genes) -> bool:
+    names = {FUSION_PARTNER_ALIASES.get(g.upper(), clean_gene(g)) for g in genes}
+    return len(names) == 2 and frozenset(names) in _KNOWN_FUSION_PAIRS
+
 
 _ALIASES_BY_GENE: dict[str, list[str]] = defaultdict(list)
 for _alias, _canonical in GENE_ALIAS_MAP.items():
@@ -236,6 +336,8 @@ def clean_gene(gene: str) -> str:
     compact = re.sub(r"[-_]", "", written)
     if compact in GENE_ALIAS_MAP:
         return GENE_ALIAS_MAP[compact]
+    if re.sub(r"/", "", compact) in GENE_ALIAS_MAP:          # HER2/neu, BCR/ABL
+        return GENE_ALIAS_MAP[re.sub(r"/", "", compact)]
     for key in (written, compact):
         if key in _HGNC_APPROVED:
             return key
@@ -345,10 +447,30 @@ def alteration_class(variant: str, gene: str) -> tuple[str, str] | None:
     for partner in gene_partners or ():
         remainder = remainder.replace(partner.lower(), "")
     gene_pair = (re.search(r"::|-|/", raw_gene) and gene_partners
+                 and ("/" not in raw_gene or is_known_fusion(gene_partners))      # KRAS/BRAF: two genes
                  and (compact_gene not in GENE_ALIAS_MAP or compact_gene in FUSION_GENE_ALIASES)
                  and not re.search(r"\d", remainder)          # no specific change such as T315I
                  and not compact.endswith(("amplification", "amplified", "itd")))
-    if _FUSION_WORDS_RE.search(raw_variant) or "::" in raw_gene or gene_pair:
+    # The pair named in the variant field (Variant: EML4-ALK, Gene: ALK), without a specific change
+    variant_partners = fusion_partners(raw_variant, "")
+    if variant_partners and not re.search(rf"{variant_partners[0]}\s*(?:::|-|–)\s*{variant_partners[1]}",
+                                          raw_variant.upper()) and not is_known_fusion(variant_partners):
+        variant_partners = None          # "KRAS/BRAF mutated": a slash lists genes
+    variant_pair = False
+    if variant_partners and not gene_pair:
+        rest = compact
+        for partner in variant_partners:
+            rest = rest.replace(partner.lower(), "")
+        stated = clean_gene(raw_gene)
+        names = {FUSION_PARTNER_ALIASES.get(p, clean_gene(p)) for p in variant_partners}
+        # both partners must be genes (AR-V7, HER2-neu and CDKN2A-p16 are not fusions)
+        # (as written: "V7" and "VIII" are HGNC aliases of unrelated genes)
+        both_genes = bool(_HGNC_APPROVED) and all(
+            p in _HGNC_APPROVED or p in FUSION_PARTNER_ALIASES for p in variant_partners)
+        variant_pair = (not re.search(r"\d", rest) and len(names) == 2
+                        and (is_known_fusion(variant_partners) or (stated in names and both_genes))
+                        and not compact.endswith(("amplification", "amplified", "itd")))
+    if _FUSION_WORDS_RE.search(raw_variant) or "::" in raw_gene or gene_pair or variant_pair:
         # CIViC writes "fusion with any/unknown partner" as v::ALK or FGFR2::?
         if "::" in raw_gene:
             known = [p.strip() for p in raw_gene.split("::") if p.strip() not in {"v", "V", "?", ""}]
@@ -411,13 +533,55 @@ def codon_class(variant: str, gene: str) -> str | None:
     return None
 
 
+_DESCRIPTOR_RE = re.compile(
+    r"(?i)\b(?:mutations?|mutated|mutants?|variants?|polymorphisms?|substitutions?|snvs?|indels?|"
+    r"alterations?|missense|point|hotspot|activating|or|and)\b")
+
+
+def _split_gene_suffix(variant: str, gene: str) -> tuple[str, str]:
+    """Gene: BRAFV600E -> gene BRAF (and variant V600E if the variant field has none)."""
+    raw = gene.strip()
+    # Only a clear protein change (V600E) after a gene name of 3+ characters, and only if the
+    # whole name is not already a gene (PI3KCA is an alias of PIK3CA, not "P" + "I3KCA");
+    # hyphenated names are fusion notation (CRLF2-P2RY8)
+    m = re.fullmatch(r"([A-Za-z][A-Za-z0-9]{2,}?)([A-Za-z]\d{2,4}[A-Za-z*])", raw)
+    if not m or not _HGNC_APPROVED or "-" in raw or clean_gene(raw) in _HGNC_APPROVED:
+        return variant, gene
+    prefix = clean_gene(m.group(1))
+    if prefix not in _HGNC_APPROVED:
+        return variant, gene
+    return (variant if re.search(r"\d", variant) else m.group(2)), prefix
+
+
+def _strip_descriptors(variant: str, gene: str) -> str:
+    """Remove gene names and descriptive words around a variant: "V600E BRAF mutation" -> V600E,
+    "BRAFV600 SNV or indel" -> V600, "V600EBRAF" -> V600E. Unchanged if no position remains."""
+    text = _normalize_amino_acids(variant)
+    symbol = clean_gene(gene)
+    names = {n for n in {gene.strip(), symbol, *(a.upper() for a in _ALIASES_BY_GENE.get(symbol, []))}
+             if len(n) >= 2 and "/" not in n}
+    for name in sorted(names, key=len, reverse=True):
+        esc = "-?".join(re.escape(ch) for ch in name if ch != "-")      # B-Raf, BRAF, B-RAF
+        text = re.sub(rf"(?i)(?:^|(?<=[\s(\-:]))({esc})(?=$|[\s)\-:,]|[A-Za-z]\d)", " ", text)
+        text = re.sub(rf"(?i)(?<=\d[A-Za-z*])\s*{esc}$", "", text)                # V600EBRAF
+    text = _DESCRIPTOR_RE.sub(" ", text)
+    text = " ".join(text.split()).strip(" -:,")
+    return text if text and re.search(r"\d", text) and text != variant else variant
+
+
 def clean_pair(variant: str, gene: str) -> tuple[str, str] | None:
     """Clean one LLM (variant, gene) pair; ``None`` if it should be discarded.
 
     Alteration classes (fusions, amplifications, ITD, hotspot codons) are
     recognized first; other non-specific descriptions are filtered out.
     """
+    variant, gene = _split_gene_suffix(variant, gene)
     alteration = alteration_class(variant, gene)
+    if alteration is None:
+        stripped = _strip_descriptors(variant, gene)
+        if stripped != variant:
+            variant = stripped
+            alteration = alteration_class(variant, gene)
     if alteration:
         token, gene = alteration
         if gene in INVALID_GENES or len(gene) < MIN_GENE_LENGTH or len(gene) > MAX_GENE_LENGTH:
@@ -449,6 +613,10 @@ def clean_pair(variant: str, gene: str) -> tuple[str, str] | None:
             v = v[len(alias):]
             break
 
+    # Range replaced by residues, written with ">": V600_K601>D -> v600k601delinsd
+    m = re.fullmatch(r"([a-z]\d+)([a-z]\d+)>([a-z]*)", v)
+    if m:
+        v = f"{m.group(1)}{m.group(2)}" + ("del" if m.group(3) in ("", "del") else f"delins{m.group(3)}")
     if len(v) < MIN_VARIANT_LENGTH:
         return None
     if v not in _PATTERN_EXCEPTIONS and (v in MANUAL_REMOVALS or any(p.match(v) for p in _REMOVE_PATTERNS)):
@@ -456,7 +624,7 @@ def clean_pair(variant: str, gene: str) -> tuple[str, str] | None:
     # The gene with a prefix, e.g. gBRCA2 (germline) / sBRCA2 (somatic), is not a variant
     if v.endswith(g) and len(v) - len(g) <= 2:
         return None
-    if not _VARIANT_NOTATION_RE.match(v):
+    if not _VARIANT_NOTATION_RE.match(v) and v not in _PATTERN_EXCEPTIONS:
         return None
     # Star alleles are named with their gene (*28 + UGT1A1 -> ugt1a1*28), as in CIViC
     if re.fullmatch(r"\*\d+[a-z]?", v):
@@ -503,6 +671,23 @@ class GroundingText:
 # --------------------------------------------------------------------------- #
 # CIViC-based normalization (replaces the v2/v3 alias merging of 05.2)
 # --------------------------------------------------------------------------- #
+def configure_civic_knowledge(civic_variants: Sequence[dict], known_variants) -> None:
+    """Fusion pairs CIViC names (gene or variant "BCR::ABL1") and the (variant, gene) pairs it
+    knows; used to read slash gene lists. Called by VariantNormalizer."""
+    global _KNOWN_FUSION_PAIRS, _KNOWN_VARIANTS
+    pairs = set()
+    for row in civic_variants:
+        for text in (row.get("gene") or "", row.get("name") or ""):
+            if "::" in text:
+                parts = [p.strip() for p in text.split("::")]
+                # gene pairs only: CIViC also writes exon junctions this way (e2::e10)
+                if len(parts) == 2 and all(p and p not in {"v", "V", "?"} and not re.fullmatch(
+                        r"(?i)e(?:x(?:on)?)?\d+[a-z]?|[a-z]\d+", p) for p in parts):
+                    pairs.add(frozenset(FUSION_PARTNER_ALIASES.get(p.upper(), clean_gene(p)) for p in parts))
+    _KNOWN_FUSION_PAIRS = {p for p in pairs if len(p) == 2}
+    _KNOWN_VARIANTS = set(known_variants)
+
+
 class VariantNormalizer:
     """Maps CIViC aliases, HGVS descriptions and rsIDs onto the CIViC variant name.
 
@@ -543,6 +728,7 @@ class VariantNormalizer:
         for key in ambiguous:
             canonical.pop(key, None)
         self.alias_map = canonical
+        configure_civic_knowledge(civic_variants, canonical_names | set(canonical))
         # Fusion partners seen per fusion node, e.g. fusion_ALK -> {"EML4::ALK", "KIF5B::ALK"}
         self.fusion_partners: dict[str, set[str]] = defaultdict(set)
         self.ungrounded = 0   # extracted variants dropped because they are not in the text
@@ -554,7 +740,14 @@ class VariantNormalizer:
             self.fusion_partners[node].add(f"{five}::{three}")
 
     def canonicalize(self, variant: str, gene: str) -> str:
-        return self.alias_map.get((variant, gene), variant)
+        if (variant, gene) in self.alias_map:
+            return self.alias_map[(variant, gene)]
+        # A footnote marker after a known change: V600E2 -> v600e (only if CIViC knows v600e)
+        m = re.fullmatch(r"([a-z]\d+[a-z])\d", variant)
+        if m and (variant, gene) not in _KNOWN_VARIANTS and (m.group(1), gene) in _KNOWN_VARIANTS:
+            short = m.group(1)
+            return self.alias_map.get((short, gene), short)
+        return variant
 
     def node_id(self, variant: str, gene: str) -> str:
         return f"{self.canonicalize(variant, gene)}_{gene}"

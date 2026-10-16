@@ -202,6 +202,21 @@ important alterations that are not a single change:
   these alteration types. Responses are stored with their prompt version, so
   papers answered with an older prompt are extracted again. *The extension has
   not been evaluated yet; the published evaluation used prompt 3.*
+- **Normalization of the LLM's answers** (`variants.py`), besides CIViC aliases and
+  HGVS descriptions:
+  - lists are split: `V600E;K601Q`, `G12D and G13D`, `T878A/S`; gene lists are
+    expanded (`CDK4/6`, `BRCA1/2`, `FGF3/4/19`, `PD-L1/L2`) or merged when they name
+    one gene (`ERBB2/HER2`, `HER2/neu`);
+  - a variant reported with a gene list goes to the gene it belongs to (gene prefix,
+    a CIViC variant of that gene, a hotspot codon, or list position); class terms
+    such as amplification apply to every gene; unattributable pairs are dropped;
+  - two genes with a slash (`KRAS/BRAF mutated`) are a list, not a fusion, unless
+    the text says fusion or CIViC names that fusion (BCR/ABL1, PML/RARA);
+  - gene names and descriptive words around a variant are removed (`V600E BRAF
+    mutation`, `V600E-mutant B-Raf` → V600E; `BRAF V600 SNV or indel` → V600), as is a
+    variant attached to the gene name (`BRAFV600E`);
+  - "wild-type" and "negative" are not variants; `V600_K601>D` is written as delins;
+    a footnote digit after a change CIViC knows is dropped (`V600E2` → V600E).
 - In EvidenceDb, searches like `ALK` + `fusion`, `EML4-ALK`, `ERBB2` +
   `amplification`, `FLT3` + `ITD` or `BRAF` + `V600` find these nodes. A
   specific hotspot variant (BRAF V600E) also lists curated and verified
