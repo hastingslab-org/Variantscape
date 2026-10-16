@@ -66,6 +66,8 @@ MANUAL_RULES = [
     (r"^acute biphenotypic leukemia$", "ALAL"),
     (r"^lymphoma$", "LNM"),
     (r"^b[- ]cell non[- ]hodgkin lymphoma$", "MBN"),
+    # site-less by definition, but a clinical entity of its own (kept despite the no-site drop policy)
+    (r"^(cancer|carcinoma) of unknown primary( origin| site)?$", "CUP"),
     # too generic / no site
     (r"^(acute |chronic )?leukemia$|^hematologic cancer$", None),
     (r"^mucinous adenocarcinoma$|^papillary adenocarcinoma$", None),

@@ -125,6 +125,17 @@ MANUAL_DISEASES = [
                      "androgen dependent prostate cancer", "metastatic castration-sensitive prostate cancer",
                      "androgen-dependent metastatic prostate cancer", "hormone-naïve prostate cancer"],
     },
+    # CIViC's "Cancer Of Unknown Primary Origin" has no aliases, so abstract terms never matched it.
+    # Bare "CUP" is ambiguous (e.g. compassionate use programme); verification filters those papers.
+    {
+        "name": "cancer of unknown primary",
+        "synonyms": ["cancer of unknown primary site", "cancer of unknown primary origin",
+                     "cancer of an unknown primary", "carcinoma of unknown primary site",
+                     "adenocarcinoma of unknown primary", "unknown primary cancer", "unknown primary tumor",
+                     "occult primary cancer", "occult primary tumor", "malignancy of unknown primary",
+                     "neoplasm of unknown primary", "CUP", "CUPS", "CUP syndrome", "CUP tumor", "CUP cancer",
+                     "CUP adenocarcinoma"],
+    },
 ]
 
 
